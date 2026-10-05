@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --sidebar-width: 260px;
+    --header-height: 60px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    @apply bg-surface-900 text-slate-100 font-sans antialiased;
+    background-image: radial-gradient(ellipse at 20% 50%, rgba(15, 76, 53, 0.15) 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 20%, rgba(15, 76, 53, 0.1) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-estate-800 rounded-full; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-850 border border-estate-900/60 rounded-2xl;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .card-hover { @apply card transition-all duration-200 hover:border-estate-700/60 hover:shadow-lg; }
+
+  .btn-primary {
+    @apply bg-estate-600 hover:bg-estate-500 text-white font-medium px-4 py-2 rounded-xl transition-all duration-150 active:scale-95 flex items-center gap-2 text-sm;
+  }
+  .btn-secondary {
+    @apply bg-surface-800 hover:bg-surface-700 border border-slate-700 text-slate-200 font-medium px-4 py-2 rounded-xl transition-all duration-150 active:scale-95 flex items-center gap-2 text-sm;
+  }
+  .btn-danger {
+    @apply bg-red-900/60 hover:bg-red-800 border border-red-800/60 text-red-300 font-medium px-4 py-2 rounded-xl transition-all duration-150 active:scale-95 flex items-center gap-2 text-sm;
+  }
+  .btn-ghost {
+    @apply text-slate-400 hover:text-slate-200 hover:bg-surface-800 font-medium px-3 py-2 rounded-xl transition-all duration-150 active:scale-95 flex items-center gap-2 text-sm;
+  }
+
+  .input {
+    @apply w-full bg-surface-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-estate-600 focus:ring-1 focus:ring-estate-600/40 transition-all;
+  }
+
+  .select {
+    @apply w-full bg-surface-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none focus:border-estate-600 focus:ring-1 focus:ring-estate-600/40 transition-all;
+  }
+
+  .label { @apply block text-xs font-medium text-slate-400 mb-1.5; }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-green  { @apply badge bg-estate-900/80 text-estate-300 border border-estate-700/50; }
+  .badge-red    { @apply badge bg-red-900/60 text-red-300 border border-red-800/50; }
+  .badge-yellow { @apply badge bg-amber-900/60 text-amber-300 border border-amber-800/50; }
+  .badge-blue   { @apply badge bg-blue-900/60 text-blue-300 border border-blue-800/50; }
+  .badge-gray   { @apply badge bg-slate-800 text-slate-400 border border-slate-700/50; }
+
+  .stat-card {
+    @apply card p-5 flex flex-col gap-3;
+  }
+
+  .table-container { @apply card overflow-hidden; }
+  .table { @apply w-full text-sm; }
+  .table thead tr { @apply border-b border-slate-800; }
+  .table th { @apply px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider; }
+  .table tbody tr { @apply border-b border-slate-800/50 hover:bg-estate-950/30 transition-colors; }
+  .table td { @apply px-4 py-3 text-slate-300; }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in;
+  }
+  .modal {
+    @apply card w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in;
+  }
+
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+  .page-title {
+    @apply text-xl font-display font-semibold text-slate-100;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-100 hover:bg-estate-900/50 transition-all duration-150 cursor-pointer;
+  }
+  .nav-item-active {
+    @apply nav-item text-estate-300 bg-estate-900/70 border border-estate-800/50;
+  }
+
+  .emergency-pulse {
+    animation: emergencyPulse 1s ease-in-out infinite;
+  }
+  @keyframes emergencyPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+  }
+}

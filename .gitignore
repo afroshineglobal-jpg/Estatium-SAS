@@ -1,0 +1,25 @@
+# dependencies / builds
+node_modules/
+**/node_modules/
+client/dist/
+client/dev-dist/
+# secrets & local state — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+firebase-adminsdk*.json
+service-account*.json
+# databases & uploads
+*.db
+*.db-journal
+*.sqlite
+server/uploads/
+uploads/
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.zip

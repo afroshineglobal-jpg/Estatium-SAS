@@ -1,0 +1,19 @@
+{
+  "name": "estatium",
+  "version": "1.0.0",
+  "description": "Estatium \u2014 multi-tenant estate management SaaS",
+  "scripts": {
+    "setup": "npm run setup:server && npm run setup:client",
+    "setup:server": "cd server && npm install && npx prisma generate",
+    "setup:client": "cd client && npm install",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "db:ddl": "cd server && npm run db:ddl",
+    "test": "cd server && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

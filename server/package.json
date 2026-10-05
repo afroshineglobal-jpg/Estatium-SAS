@@ -1,0 +1,38 @@
+{
+  "name": "estatium-server",
+  "version": "1.0.0",
+  "description": "Estatium API \u2014 multi-tenant SaaS (Express + Prisma + PostgreSQL)",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "nodemon src/app.js",
+    "start": "node src/app.js",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "setup": "npm install && npx prisma generate",
+    "test": "node --test test/*.test.js",
+    "db:ddl": "node scripts/gen-ddl.js > sql/001_schema.sql",
+    "db:migrate-legacy": "node scripts/migrate-sqlite-to-postgres.js",
+    "platform:create-owner": "node scripts/create-platform-owner.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.4",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.2.0",
+    "firebase-admin": "^12.7.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.4",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^5.10.0",
+    "better-sqlite3": "^11.5.0",
+    "@prisma/prisma-schema-wasm": "5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2"
+  }
+}

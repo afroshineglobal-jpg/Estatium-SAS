@@ -1,0 +1,1025 @@
+// Estatium — Multi-tenant SaaS schema (PostgreSQL, shared database + tenantId isolation)
+//
+// Conventions
+//   * Every tenant-owned model has `tenantId` (NOT NULL, FK -> Tenant) and is listed in
+//     server/src/config/tenantModels.js. The Prisma client extension in config/prisma.js injects
+//     tenantId into every query; PostgreSQL RLS (sql/002_rls_and_constraints.sql) is the second wall.
+//   * Platform models (Tenant, Plan, Subscription, Invoice, ...) are NOT tenant-scoped.
+//   * Money is Decimal(14,2) — never Float. Each money row carries its own currency.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  DELETED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum PricingModel {
+  PER_UNIT
+  FLAT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum InvoiceLineKind {
+  SUBSCRIPTION
+  OVERAGE
+  PRORATION_CREDIT
+  PRORATION_CHARGE
+  DISCOUNT
+  TAX
+  ADJUSTMENT
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+enum DiscountDuration {
+  ONCE
+  REPEATING
+  FOREVER
+}
+
+enum PlatformRole {
+  SUPER_OWNER
+  BILLING_ADMIN
+  SUPPORT
+  READ_ONLY
+}
+
+enum PlatformPaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum UserRole {
+  ADMIN
+  SECURITY_ADMIN
+  FINANCE_ADMIN
+  MAINTENANCE_MANAGER
+  RESIDENT
+  GUARD
+  STAFF          // cleaners, gardeners, electricians… no gate permissions
+}
+
+enum ResidentType {
+  OWNER
+  TENANT
+}
+
+enum BillStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+  WAIVED
+  VOID
+}
+
+enum BillType {
+  MAINTENANCE
+  UTILITY
+  PENALTY
+  AMENITY
+  ONE_TIME
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum VisitorStatus {
+  PENDING
+  APPROVED
+  DENIED
+  INSIDE
+  EXITED
+}
+
+enum VisitorType {
+  GUEST
+  DELIVERY
+  SERVICE
+  DOMESTIC
+}
+
+enum ParcelStatus {
+  PENDING
+  COLLECTED
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum MaintenanceStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EmergencyStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum AdStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLATFORM (NOT tenant-scoped)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Currency {
+  code           String   @id @db.Char(3)
+  name           String
+  symbol         String
+  decimals       Int      @default(2)
+  defaultLocale  String   @default("en-US")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  tenants        Tenant[]
+  planPrices     PlanPrice[]
+}
+
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  base      String   @db.Char(3)
+  quote     String   @db.Char(3)
+  rate      Decimal  @db.Decimal(18, 8)
+  asOf      DateTime @default(now())
+  source    String   @default("manual")
+
+  @@unique([base, quote, asOf])
+  @@index([base, quote, asOf(sort: Desc)])
+}
+
+model PlatformUser {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  password       String
+  name           String
+  role           PlatformRole @default(SUPPORT)
+  isActive       Boolean      @default(true)
+  tokenVersion   Int          @default(0)
+  failedLogins   Int          @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Tenant {
+  id              String       @id @default(uuid())
+  slug            String       @unique            // login subdomain / tenant key, lower-case
+  name            String
+  status          TenantStatus @default(TRIAL)
+  currency        String       @default("USD") @db.Char(3)
+  currencyRef     Currency     @relation(fields: [currency], references: [code])
+  timezone        String       @default("UTC")
+  country         String?
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  address         String?
+  trialEndsAt     DateTime?
+  activatedAt     DateTime?
+  suspendedAt     DateTime?
+  suspendedReason String?
+  expiredAt       DateTime?
+  deletedAt       DateTime?
+  purgeAfter      DateTime?                       // hard-delete date after soft delete
+  purgedAt        DateTime?                       // tenant data erased (invoices are retained)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  subscription    Subscription?
+  invoices        Invoice[]
+  usageRecords    UsageRecord[]
+
+  // tenant-scoped back-relations
+  users                 User[]
+  blocks                Block[]
+  units                 Unit[]
+  residents             Resident[]
+  familyMembers         FamilyMember[]
+  visitors              Visitor[]
+  parcels               Parcel[]
+  amenities             Amenity[]
+  amenitySlots          AmenitySlot[]
+  amenityBookings       AmenityBooking[]
+  bills                 Bill[]
+  payments              Payment[]
+  vehicles              Vehicle[]
+  vehicleLogs           VehicleLog[]
+  staffMembers          StaffMember[]
+  attendanceLogs        AttendanceLog[]
+  tasks                 Task[]
+  maintenanceRequests   MaintenanceRequest[]
+  emergencyReports      EmergencyReport[]
+  notices               Notice[]
+  messages              Message[]
+  polls                 Poll[]
+  pollVotes             PollVote[]
+  guards                Guard[]
+  notifications         Notification[]
+  advertisements        Advertisement[]
+  settings              Setting[]
+
+  @@index([status])
+}
+
+model Plan {
+  id                String       @id @default(uuid())
+  code              String       @unique         // e.g. "standard"
+  name              String
+  description       String?
+  pricingModel      PricingModel @default(PER_UNIT)
+  billingInterval   BillingInterval @default(MONTHLY)
+  minBillableUnits  Int          @default(0)
+  trialDays         Int          @default(14)
+  isPublic          Boolean      @default(true)
+  isActive          Boolean      @default(true)
+  features          Json         @default("{}")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  prices            PlanPrice[]
+  subscriptions     Subscription[]
+}
+
+// One row per (plan, currency): unitAmount = price per unit per month; flatAmount for FLAT plans.
+model PlanPrice {
+  id              String   @id @default(uuid())
+  planId          String
+  plan            Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  currency        String   @db.Char(3)
+  currencyRef     Currency @relation(fields: [currency], references: [code])
+  unitAmount      Decimal  @db.Decimal(14, 2)
+  overageAmount   Decimal? @db.Decimal(14, 2)
+  flatAmount      Decimal? @db.Decimal(14, 2)
+
+  @@unique([planId, currency])
+}
+
+model Coupon {
+  id               String           @id @default(uuid())
+  code             String           @unique
+  name             String
+  type             DiscountType
+  percentOff       Decimal?         @db.Decimal(5, 2)
+  amountOff        Decimal?         @db.Decimal(14, 2)
+  currency         String?          @db.Char(3)  // required when type = FIXED_AMOUNT
+  duration         DiscountDuration @default(ONCE)
+  durationMonths   Int?
+  validFrom        DateTime         @default(now())
+  validUntil       DateTime?
+  maxRedemptions   Int?
+  timesRedeemed    Int              @default(0)
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+
+  redemptions      SubscriptionCoupon[]
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  tenantId            String             @unique
+  tenant              Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  planId              String
+  plan                Plan               @relation(fields: [planId], references: [id])
+  status              SubscriptionStatus @default(TRIAL)
+  currency            String             @db.Char(3)
+  billingInterval     BillingInterval    @default(MONTHLY)
+
+  // Pricing overrides (contract / custom pricing). NULL = use plan price in `currency`.
+  customUnitAmount    Decimal?           @db.Decimal(14, 2)
+  customOverageAmount Decimal?           @db.Decimal(14, 2)
+  customFlatAmount    Decimal?           @db.Decimal(14, 2)
+  contractReference   String?
+  contractStart       DateTime?
+  contractEnd         DateTime?
+
+  committedUnits      Int?               // paid-for units; extra units billed as OVERAGE
+  maxUnits            Int?               // hard cap enforced when creating units
+  usageBasis          String             @default("SNAPSHOT") // SNAPSHOT | PEAK
+  autoConvert         Boolean            @default(true)       // trial -> active automatically
+  paymentTermsDays    Int                @default(14)
+  graceDays           Int                @default(7)          // after due date before SUSPENDED
+
+  trialEndsAt         DateTime?
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean            @default(false)
+  cancelledAt         DateTime?
+  billedUnits         Int                @default(0)          // units on the latest invoice
+  creditBalance       Decimal            @default(0) @db.Decimal(14, 2) // proration credits, applied to the next invoice
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  coupons             SubscriptionCoupon[]
+  invoices            Invoice[]
+  events              SubscriptionEvent[]
+
+  @@index([status, currentPeriodEnd])
+}
+
+model SubscriptionCoupon {
+  id              String       @id @default(uuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  couponId        String
+  coupon          Coupon       @relation(fields: [couponId], references: [id])
+  appliedAt       DateTime     @default(now())
+  monthsApplied   Int          @default(0)
+  endedAt         DateTime?
+
+  @@unique([subscriptionId, couponId])
+}
+
+model SubscriptionEvent {
+  id              String       @id @default(uuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenantId        String
+  type            String       // CREATED, PLAN_CHANGED, PRICE_CHANGED, STATUS_CHANGED, RENEWED, UNITS_CHANGED, ...
+  data            Json         @default("{}")
+  actorType       String?
+  actorId         String?
+  createdAt       DateTime     @default(now())
+
+  @@index([subscriptionId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  number          String        @unique
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  status          InvoiceStatus @default(OPEN)
+  currency        String        @db.Char(3)
+  periodStart     DateTime
+  periodEnd       DateTime
+  units           Int           @default(0)
+  unitAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  subtotal        Decimal       @default(0) @db.Decimal(14, 2)
+  discountTotal   Decimal       @default(0) @db.Decimal(14, 2)
+  taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
+  total           Decimal       @default(0) @db.Decimal(14, 2)
+  amountPaid      Decimal       @default(0) @db.Decimal(14, 2)
+  issuedAt        DateTime      @default(now())
+  dueDate         DateTime
+  paidAt          DateTime?
+  voidedAt        DateTime?
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  lines           InvoiceLine[]
+  payments        PlatformPayment[]
+
+  @@index([tenantId, issuedAt(sort: Desc)])
+  @@index([status, dueDate])
+}
+
+model InvoiceLine {
+  id          String          @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  kind        InvoiceLineKind
+  description String
+  quantity    Decimal         @default(1) @db.Decimal(14, 4)
+  unitAmount  Decimal         @default(0) @db.Decimal(14, 2)
+  amount      Decimal         @db.Decimal(14, 2)
+
+  @@index([invoiceId])
+}
+
+// Payments of SaaS invoices by tenants. Gateway fields are populated in the payment-gateway phase.
+model PlatformPayment {
+  id            String                @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  tenantId      String
+  amount        Decimal               @db.Decimal(14, 2)
+  currency      String                @db.Char(3)
+  method        String                @default("MANUAL") // MANUAL | BANK_TRANSFER | GATEWAY
+  status        PlatformPaymentStatus @default(SUCCEEDED)
+  provider      String?
+  providerRef   String?
+  reference     String?
+  recordedById  String?
+  paidAt        DateTime              @default(now())
+  createdAt     DateTime              @default(now())
+
+  @@unique([provider, providerRef])
+  @@index([tenantId, paidAt(sort: Desc)])
+}
+
+model UsageRecord {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metric      String   @default("units")
+  quantity    Int
+  recordedOn  DateTime @db.Date
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, metric, recordedOn])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String?                       // NULL = platform-level event
+  actorType   String                        // PLATFORM_USER | TENANT_USER | SYSTEM
+  actorId     String?
+  actorEmail  String?
+  action      String                        // e.g. TENANT_SUSPENDED
+  entity      String?
+  entityId    String?
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TENANT-SCOPED (every model below carries tenantId)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model User {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  email               String
+  password            String
+  role                UserRole
+  name                String
+  phone               String?
+  avatar              String?
+  isActive            Boolean   @default(true)
+  fcmToken            String?
+  tokenVersion        Int       @default(0)   // bump to revoke every issued JWT
+  mustChangePassword  Boolean   @default(false)
+  failedLogins        Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  resident            Resident?
+  guard               Guard?
+  staffMember         StaffMember?
+  notifications       Notification[]
+  sentMessages        Message[]            @relation("SentMessages")
+  maintenanceRequests MaintenanceRequest[]
+  emergencyReports    EmergencyReport[]
+  bookings            AmenityBooking[]
+  pollVotes           PollVote[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+}
+
+model Block {
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name      String
+  units     Unit[]
+
+  @@unique([tenantId, name])
+}
+
+model Unit {
+  id          String     @id @default(uuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  blockId     String
+  block       Block      @relation(fields: [blockId], references: [id])
+  unitNumber  String
+  floor       Int?
+  isOccupied  Boolean    @default(false)   // legacy flag; occupancy is derived from residents
+  isActive    Boolean    @default(true)    // billable to the SaaS subscription while true
+  createdAt   DateTime   @default(now())
+  residents   Resident[]
+  parcels     Parcel[]
+
+  @@unique([tenantId, blockId, unitNumber])
+  @@index([tenantId, isActive])
+}
+
+model Resident {
+  id            String       @id @default(uuid())
+  tenantId      String
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id])
+  unitId        String
+  unit          Unit         @relation(fields: [unitId], references: [id])
+  residentType  ResidentType @default(TENANT)
+  moveInDate    DateTime?
+  moveOutDate   DateTime?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+
+  members       FamilyMember[]
+  vehicles      Vehicle[]
+  visitors      Visitor[]
+  bills         Bill[]
+
+  @@index([tenantId, unitId])
+  @@index([tenantId, isActive])
+}
+
+model FamilyMember {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  residentId  String
+  resident    Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  name        String
+  relation    String
+  phone       String?
+  photo       String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, residentId])
+}
+
+model Visitor {
+  id             String        @id @default(uuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  residentId     String
+  resident       Resident      @relation(fields: [residentId], references: [id])
+  name           String
+  phone          String?
+  photo          String?
+  purpose        String?
+  visitorType    VisitorType   @default(GUEST)
+  status         VisitorStatus @default(PENDING)
+  entryCode      String?
+  exitCode       String?
+  codeExpiresAt  DateTime?
+  entryTime      DateTime?
+  exitTime       DateTime?
+  leaveAtGate    Boolean       @default(false)
+  denialNote     String?
+  vehicleNumber  String?
+  preApproved    Boolean       @default(false)
+  expectedDate   DateTime?
+  guardNote      String?
+  createdAt      DateTime      @default(now())
+
+  @@unique([tenantId, entryCode])
+  @@unique([tenantId, exitCode])
+  @@index([tenantId, residentId, createdAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt(sort: Desc)])
+}
+
+model Parcel {
+  id          String       @id @default(uuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unitId      String
+  unit        Unit         @relation(fields: [unitId], references: [id])
+  senderName  String?
+  carrier     String?
+  description String?
+  photo       String?
+  status      ParcelStatus @default(PENDING)
+  loggedAt    DateTime     @default(now())
+  collectedAt DateTime?
+  otpHash     String?                       // sha256(otp) — plaintext OTP is never stored
+  otpAttempts Int          @default(0)
+  notifiedAt  DateTime?
+
+  @@index([tenantId, unitId, status])
+  @@index([tenantId, loggedAt(sort: Desc)])
+}
+
+model Amenity {
+  id           String           @id @default(uuid())
+  tenantId     String
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name         String
+  description  String?
+  capacity     Int?
+  pricePerHour Decimal?         @db.Decimal(14, 2)
+  isActive     Boolean          @default(true)
+  image        String?
+  bookings     AmenityBooking[]
+  slots        AmenitySlot[]
+
+  @@index([tenantId, isActive])
+}
+
+model AmenitySlot {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  amenityId   String
+  amenity     Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  isAvailable Boolean  @default(true)
+
+  @@index([tenantId, amenityId])
+}
+
+model AmenityBooking {
+  id          String        @id @default(uuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  amenityId   String
+  amenity     Amenity       @relation(fields: [amenityId], references: [id])
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  date        DateTime
+  startTime   String
+  endTime     String
+  startAt     DateTime                      // date + startTime  (used by the no-overlap exclusion constraint)
+  endAt       DateTime                      // date + endTime
+  status      BookingStatus @default(PENDING)
+  totalAmount Decimal?      @db.Decimal(14, 2)
+  notes       String?
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId, amenityId, date])
+  @@index([tenantId, userId])
+}
+
+model Bill {
+  id          String     @id @default(uuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  residentId  String
+  resident    Resident   @relation(fields: [residentId], references: [id])
+  title       String
+  amount      Decimal    @db.Decimal(14, 2)
+  amountPaid  Decimal    @default(0) @db.Decimal(14, 2)
+  currency    String     @db.Char(3)
+  dueDate     DateTime
+  status      BillStatus @default(UNPAID)
+  type        BillType   @default(MAINTENANCE)
+  description String?
+  sourceType  String?                        // e.g. AMENITY_BOOKING, MAINTENANCE_REQUEST (idempotency)
+  sourceId    String?
+  paidAt      DateTime?
+  createdAt   DateTime   @default(now())
+  payments    Payment[]
+
+  @@unique([tenantId, sourceType, sourceId])
+  @@index([tenantId, residentId, status])
+  @@index([tenantId, status, dueDate])
+}
+
+model Payment {
+  id           String        @id @default(uuid())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  billId       String
+  bill         Bill          @relation(fields: [billId], references: [id])
+  amount       Decimal       @db.Decimal(14, 2)
+  currency     String        @db.Char(3)
+  method       PaymentMethod
+  status       PaymentStatus @default(SUCCEEDED)
+  provider     String?
+  providerRef  String?
+  reference    String?
+  recordedById String?
+  paidAt       DateTime      @default(now())
+  notes        String?
+
+  @@unique([tenantId, provider, providerRef])
+  @@index([tenantId, billId])
+  @@index([tenantId, paidAt(sort: Desc)])
+}
+
+model Vehicle {
+  id          String       @id @default(uuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  residentId  String
+  resident    Resident     @relation(fields: [residentId], references: [id])
+  plateNumber String
+  make        String?
+  model       String?
+  color       String?
+  type        String       @default("CAR")
+  qrCode      String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  vehicleLogs VehicleLog[]
+
+  @@unique([tenantId, plateNumber])
+  @@index([tenantId, residentId])
+}
+
+model VehicleLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  action    String
+  timestamp DateTime @default(now())
+  guardNote String?
+
+  @@index([tenantId, timestamp(sort: Desc)])
+  @@index([tenantId, vehicleId])
+}
+
+model StaffMember {
+  id             String          @id @default(uuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id])
+  staffType      String
+  employedBy     String          @default("SOCIETY")
+  residentId     String?
+  qrCode         String?
+  accessStart    String?
+  accessEnd      String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  attendanceLogs AttendanceLog[]
+  tasks          Task[]
+
+  @@index([tenantId, isActive])
+}
+
+model AttendanceLog {
+  id        String      @id @default(uuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  staffId   String
+  staff     StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  action    String
+  timestamp DateTime    @default(now())
+
+  @@index([tenantId, staffId, timestamp(sort: Desc)])
+}
+
+model Task {
+  id          String      @id @default(uuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      TaskStatus  @default(PENDING)
+  dueDate     DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([tenantId, staffId, status])
+}
+
+model MaintenanceRequest {
+  id            String            @id @default(uuid())
+  tenantId      String
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  title         String
+  description   String
+  category      String
+  priority      Priority          @default(MEDIUM)
+  status        MaintenanceStatus @default(OPEN)
+  photo         String?
+  assignedToId  String?
+  estimatedCost Decimal?          @db.Decimal(14, 2)
+  actualCost    Decimal?          @db.Decimal(14, 2)
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime          @default(now())
+
+  @@index([tenantId, status])
+  @@index([tenantId, userId])
+}
+
+model EmergencyReport {
+  id          String          @id @default(uuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  type        String
+  description String?
+  location    String?
+  status      EmergencyStatus @default(ACTIVE)
+  severity    Severity        @default(HIGH)
+  evidence    Json?
+  respondedAt DateTime?
+  resolvedAt  DateTime?
+  resolution  String?
+  createdAt   DateTime        @default(now())
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
+}
+
+model Notice {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  title       String
+  content     String
+  type        String   @default("PUBLIC")
+  postedById  String
+  targetRole  UserRole?
+  isPinned    Boolean  @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt(sort: Desc)])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  senderId  String
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id])
+  roomId    String
+  content   String
+  type      String   @default("TEXT")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, roomId, createdAt(sort: Desc)])
+}
+
+model Poll {
+  id        String     @id @default(uuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  question  String
+  options   Json
+  endsAt    DateTime?
+  createdAt DateTime   @default(now())
+  votes     PollVote[]
+
+  @@index([tenantId, createdAt(sort: Desc)])
+}
+
+model PollVote {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  pollId      String
+  poll        Poll     @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  optionIndex Int
+  createdAt   DateTime @default(now())
+
+  @@unique([pollId, userId])               // one vote per user per poll (was unenforced in SQLite JSON)
+  @@index([tenantId, pollId])
+}
+
+model Guard {
+  id       String  @id @default(uuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id])
+  gateId   String?
+  shift    String?
+
+  @@index([tenantId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId, isRead, createdAt(sort: Desc)])
+}
+
+model Advertisement {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  title          String
+  content        String?
+  imageUrl       String?
+  linkUrl        String?
+  advertiserName String?
+  type           String   @default("BANNER")
+  placement      String   @default("HOME")
+  targetRole     UserRole?
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean  @default(true)
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  status         AdStatus @default(PENDING)
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, status, startDate, endDate])
+}
+
+model Setting {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  key      String
+  value    String
+
+  @@unique([tenantId, key])
+}

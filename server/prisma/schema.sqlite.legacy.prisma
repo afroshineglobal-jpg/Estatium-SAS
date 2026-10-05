@@ -1,0 +1,380 @@
+// Estate Management POC - Prisma Schema (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS & AUTH ───────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  role            String    // ADMIN | SECURITY_ADMIN | FINANCE_ADMIN | MAINTENANCE_MANAGER | RESIDENT | GUARD
+  name            String
+  phone           String?
+  avatar          String?
+  isActive        Boolean   @default(true)
+  fcmToken        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  resident        Resident?
+  guard           Guard?
+  staffMember     StaffMember?
+  notifications   Notification[]
+  sentMessages    Message[]     @relation("SentMessages")
+  maintenanceRequests MaintenanceRequest[]
+  emergencyReports    EmergencyReport[]
+  bookings            AmenityBooking[]
+}
+
+// ─── RESIDENTS ──────────────────────────────────────────────────────────────
+
+model Resident {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  unitId          String
+  unit            Unit      @relation(fields: [unitId], references: [id])
+  residentType    String    @default("TENANT") // OWNER | TENANT
+  moveInDate      DateTime?
+  moveOutDate     DateTime?
+  isActive        Boolean   @default(true)
+  members         FamilyMember[]
+  vehicles        Vehicle[]
+  visitors        Visitor[]
+  bills           Bill[]
+  createdAt       DateTime  @default(now())
+}
+
+model FamilyMember {
+  id          String    @id @default(uuid())
+  residentId  String
+  resident    Resident  @relation(fields: [residentId], references: [id])
+  name        String
+  relation    String
+  phone       String?
+  photo       String?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── UNITS / BLOCKS ──────────────────────────────────────────────────────────
+
+model Block {
+  id      String  @id @default(uuid())
+  name    String  @unique
+  units   Unit[]
+}
+
+model Unit {
+  id          String     @id @default(uuid())
+  blockId     String
+  block       Block      @relation(fields: [blockId], references: [id])
+  unitNumber  String
+  floor       Int?
+  isOccupied  Boolean    @default(false)
+  residents   Resident[]
+
+  @@unique([blockId, unitNumber])
+}
+
+// ─── VISITORS ────────────────────────────────────────────────────────────────
+
+model Visitor {
+  id            String    @id @default(uuid())
+  residentId    String
+  resident      Resident  @relation(fields: [residentId], references: [id])
+  name          String
+  phone         String?
+  photo         String?
+  purpose       String?
+  visitorType   String    @default("GUEST") // GUEST | DELIVERY | SERVICE | DOMESTIC
+  status        String    @default("PENDING") // PENDING | APPROVED | DENIED | INSIDE | EXITED
+  entryCode     String?   @unique
+  exitCode      String?
+  entryTime     DateTime?
+  exitTime      DateTime?
+  leaveAtGate   Boolean   @default(false)
+  denialNote    String?
+  vehicleNumber String?
+  preApproved   Boolean   @default(false)
+  expectedDate  DateTime?
+  guardNote     String?
+  createdAt     DateTime  @default(now())
+}
+
+// ─── PARCELS ─────────────────────────────────────────────────────────────────
+
+model Parcel {
+  id            String    @id @default(uuid())
+  unitId        String
+  senderName    String?
+  carrier       String?
+  description   String?
+  photo         String?
+  status        String    @default("PENDING") // PENDING | COLLECTED
+  loggedAt      DateTime  @default(now())
+  collectedAt   DateTime?
+  otp           String?
+  notifiedAt    DateTime?
+}
+
+// ─── AMENITIES ───────────────────────────────────────────────────────────────
+
+model Amenity {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  capacity    Int?
+  pricePerHour Float?
+  isActive    Boolean          @default(true)
+  image       String?
+  bookings    AmenityBooking[]
+  slots       AmenitySlot[]
+}
+
+model AmenitySlot {
+  id          String    @id @default(uuid())
+  amenityId   String
+  amenity     Amenity   @relation(fields: [amenityId], references: [id])
+  dayOfWeek   Int       // 0=Sun, 6=Sat
+  startTime   String    // "09:00"
+  endTime     String    // "10:00"
+  isAvailable Boolean   @default(true)
+}
+
+model AmenityBooking {
+  id          String    @id @default(uuid())
+  amenityId   String
+  amenity     Amenity   @relation(fields: [amenityId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  date        DateTime
+  startTime   String
+  endTime     String
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  totalAmount Float?
+  notes       String?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── BILLING ─────────────────────────────────────────────────────────────────
+
+model Bill {
+  id          String    @id @default(uuid())
+  residentId  String
+  resident    Resident  @relation(fields: [residentId], references: [id])
+  title       String
+  amount      Float
+  dueDate     DateTime
+  status      String    @default("UNPAID") // UNPAID | PAID | OVERDUE | WAIVED
+  type        String    @default("MAINTENANCE") // MAINTENANCE | UTILITY | PENALTY | AMENITY | ONE_TIME
+  description String?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  payments    Payment[]
+}
+
+model Payment {
+  id            String    @id @default(uuid())
+  billId        String
+  bill          Bill      @relation(fields: [billId], references: [id])
+  amount        Float
+  method        String    // CASH | BANK_TRANSFER | ONLINE
+  reference     String?
+  paidAt        DateTime  @default(now())
+  notes         String?
+}
+
+// ─── VEHICLES ────────────────────────────────────────────────────────────────
+
+model Vehicle {
+  id            String    @id @default(uuid())
+  residentId    String
+  resident      Resident  @relation(fields: [residentId], references: [id])
+  plateNumber   String    @unique
+  make          String?
+  model         String?
+  color         String?
+  type          String    @default("CAR") // CAR | BIKE | TRUCK | OTHER
+  qrCode        String?
+  isActive      Boolean   @default(true)
+  vehicleLogs   VehicleLog[]
+  createdAt     DateTime  @default(now())
+}
+
+model VehicleLog {
+  id          String    @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
+  action      String    // ENTRY | EXIT
+  timestamp   DateTime  @default(now())
+  guardNote   String?
+}
+
+// ─── STAFF ───────────────────────────────────────────────────────────────────
+
+model StaffMember {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  staffType     String    // GUARD | CLEANER | ELECTRICIAN | PLUMBER | GARDENER | OTHER
+  employedBy    String    @default("SOCIETY") // SOCIETY | RESIDENT
+  residentId    String?   // if employed by resident
+  qrCode        String?
+  accessStart   String?   // "07:00"
+  accessEnd     String?   // "18:00"
+  isActive      Boolean   @default(true)
+  attendanceLogs AttendanceLog[]
+  tasks         Task[]
+  createdAt     DateTime  @default(now())
+}
+
+model AttendanceLog {
+  id          String    @id @default(uuid())
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id])
+  action      String    // CHECK_IN | CHECK_OUT
+  timestamp   DateTime  @default(now())
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id])
+  title       String
+  description String?
+  status      String    @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── MAINTENANCE ─────────────────────────────────────────────────────────────
+
+model MaintenanceRequest {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  title         String
+  description   String
+  category      String    // PLUMBING | ELECTRICAL | CARPENTRY | CLEANING | OTHER
+  priority      String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  status        String    @default("OPEN") // OPEN | ASSIGNED | IN_PROGRESS | COMPLETED | CLOSED
+  photo         String?
+  assignedToId  String?
+  estimatedCost Float?
+  actualCost    Float?
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+}
+
+// ─── EMERGENCY ───────────────────────────────────────────────────────────────
+
+model EmergencyReport {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  type        String    // FIRE | MEDICAL | SECURITY | UTILITY | CUSTOM
+  description String?
+  location    String?
+  status      String    @default("ACTIVE") // ACTIVE | ACKNOWLEDGED | RESOLVED
+  severity    String    @default("HIGH") // LOW | MEDIUM | HIGH | CRITICAL
+  evidence    String?   // JSON array of file paths
+  respondedAt DateTime?
+  resolvedAt  DateTime?
+  resolution  String?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── COMMUNICATION ───────────────────────────────────────────────────────────
+
+model Notice {
+  id          String    @id @default(uuid())
+  title       String
+  content     String
+  type        String    @default("PUBLIC") // PUBLIC | PRIVATE
+  postedById  String
+  targetRole  String?   // null = all
+  isPinned    Boolean   @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Message {
+  id          String    @id @default(uuid())
+  senderId    String
+  sender      User      @relation("SentMessages", fields: [senderId], references: [id])
+  roomId      String    // "general" | "announcements" | "unit-{id}"
+  content     String
+  type        String    @default("TEXT") // TEXT | IMAGE | FILE
+  createdAt   DateTime  @default(now())
+}
+
+model Poll {
+  id          String    @id @default(uuid())
+  question    String
+  options     String    // JSON array
+  votes       String    @default("{}") // JSON map {optionIndex: userId[]}
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── GUARDS ──────────────────────────────────────────────────────────────────
+
+model Guard {
+  id        String  @id @default(uuid())
+  userId    String  @unique
+  user      User    @relation(fields: [userId], references: [id])
+  gateId    String?
+  shift     String? // MORNING | AFTERNOON | NIGHT
+}
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  type      String    // VISITOR | PARCEL | BILLING | EMERGENCY | MAINTENANCE | GENERAL
+  data      String?   // JSON
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+}
+
+// ─── ADVERTISEMENTS ──────────────────────────────────────────────────────────
+
+model Advertisement {
+  id            String    @id @default(uuid())
+  title         String
+  content       String?
+  imageUrl      String?
+  linkUrl       String?
+  advertiserName String?
+  type          String    @default("BANNER") // BANNER | ANNOUNCEMENT | VENDOR
+  placement     String    @default("HOME") // HOME | NOTIFICATION | OFFERS
+  targetRole    String?   // null = all
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean   @default(true)
+  impressions   Int       @default(0)
+  clicks        Int       @default(0)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | EXPIRED
+  createdAt     DateTime  @default(now())
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+
+model Setting {
+  id      String  @id @default(uuid())
+  key     String  @unique
+  value   String
+}
