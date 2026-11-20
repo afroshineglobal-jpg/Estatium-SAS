@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { SocketProvider } from './hooks/useSocket';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import OfflineBanner from './components/OfflineBanner';
 
 // Pages
 import Login from './pages/Login';
@@ -126,6 +127,7 @@ export default function App() {
             style: { background: '#1a2420', color: '#e2e8f0', border: '1px solid #1a3a28', borderRadius: '12px' },
             success: { iconTheme: { primary: '#22c55e', secondary: '#0a2e1a' } },
           }} />
+          <OfflineBanner />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/platform/login" element={<PlatformLogin />} />

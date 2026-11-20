@@ -19,7 +19,6 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.22.0",
     "recharts": "^2.12.0",
-    "server": "^1.0.42",
     "socket.io-client": "^4.7.4"
   },
   "devDependencies": {

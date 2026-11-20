@@ -6,6 +6,9 @@ import './index.css';
 import { messaging } from './firebase';
 import { getToken, onMessage } from 'firebase/messaging';
 
+// Earlier builds cached authenticated API responses in 'api-cache'. Delete any leftover copy.
+if (typeof caches !== 'undefined') caches.delete('api-cache').catch(() => {});
+
 async function initializeNotifications() {
 
   try {
