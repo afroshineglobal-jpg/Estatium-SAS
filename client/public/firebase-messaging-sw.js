@@ -10,10 +10,6 @@ firebase.initializeApp({
   appId: "1:195213042841:web:a7111feb9d942033ce8408"
 });
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
