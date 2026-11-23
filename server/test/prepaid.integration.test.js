@@ -42,7 +42,9 @@ test('prepaid ledger: record, activate, overlap warning, currency guard, void re
 
     // Voiding the latest payment moves paidThrough back (computed from the ledger, never stale)
     const v = await PP.voidPayment(id, r2.payment.id, 'Entered the wrong amount', actor, null, now);
-    assert.equal(v.paidThrough.toISOString().slice(0, 10), '2027-02-28');
+    assert.equal(v.paidThrough.toISOString().slice(0, 10), '2027-03-20');          // the small overlapping payment still counts
+    const v2 = await PP.voidPayment(id, dup.payment.id, 'Duplicate entry', actor, null, now);
+    assert.equal(v2.paidThrough.toISOString().slice(0, 10), '2027-02-28');         // back to the first payment only
     await assert.rejects(PP.voidPayment(id, r2.payment.id, 'again', actor, null, now), /already voided/);
     await assert.rejects(PP.voidPayment(id, r1.payment.id, 'x', actor, null, now), /3-300/);       // reason must be meaningful
 
@@ -61,7 +63,7 @@ test('prepaid ledger: record, activate, overlap warning, currency guard, void re
     assert.ok(out);
     const ledger = await db.prepaidPayment.findMany({ where: { tenantId: id } });
     assert.equal(ledger.length, 3);                                                          // nothing deleted; one voided
-    assert.equal(ledger.filter((p) => p.status === 'VOIDED').length, 1);
+    assert.equal(ledger.filter((p) => p.status === 'VOIDED').length, 2);
   } finally {
     await db.auditLog.deleteMany({ where: { tenantId: id } }).catch(() => {});
     await db.subscriptionEvent.deleteMany({ where: { tenantId: id } }).catch(() => {});
