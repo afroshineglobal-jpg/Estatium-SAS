@@ -184,6 +184,40 @@ function PrepaidPanel({ id, t, me, reload }) {
   );
 }
 
+function AdminsPanel({ id, t, me }) {
+  const [admins, setAdmins] = useState(null); const [shown, setShown] = useState(null);
+  const canReset = can(me, 'tenants:update');
+  const load = useCallback(() => api.get(`/tenants/${id}/admins`).then(setAdmins).catch(() => setAdmins([])), [id]);
+  useEffect(() => { load(); }, [load]);
+  const loginUrl = `${window.location.origin}/login`;
+  const reset = async (a) => {
+    if (!window.confirm(`Reset the password for ${a.email}?\nTheir current password stops working and any open sessions are signed out.`)) return;
+    try { const r = await api.post(`/tenants/${id}/reset-admin-password`, { email: a.email }); setShown(r); load(); } catch { /* interceptor toasts */ }
+  };
+  const copy = (text) => navigator.clipboard?.writeText(text).then(() => toast.success('Copied')).catch(() => toast.error('Copy failed - select the text manually'));
+  const locked = (a) => a.lockedUntil && new Date(a.lockedUntil) > new Date();
+  return (
+    <div className="card p-4 space-y-3">
+      <h3 className="font-semibold">Estate sign-in & administrators</h3>
+      <div className="grid sm:grid-cols-2 gap-3 text-sm">
+        <div><p className="text-xs text-slate-500">Estate code (type this at sign-in)</p><p className="font-mono text-base">{t.slug}</p></div>
+        <div><p className="text-xs text-slate-500">Sign-in page</p><p className="font-mono text-sm break-all">{loginUrl}</p></div>
+      </div>
+      {!admins ? <Spin /> : <div className="table-container"><table className="table"><thead><tr><th>Name</th><th>Sign-in email</th><th>Status</th><th>Last sign-in</th><th /></tr></thead><tbody>
+        {admins.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-slate-500">No administrator accounts</td></tr> : admins.map((a) => (
+          <tr key={a.id}><td className="text-sm">{a.name}</td><td className="font-mono text-sm">{a.email}</td>
+            <td className="text-xs space-x-1">{!a.isActive && <span className="badge-gray">INACTIVE</span>}{locked(a) && <span className="badge-red">LOCKED</span>}{a.mustChangePassword && <span className="badge-yellow">MUST CHANGE PASSWORD</span>}{a.isActive && !locked(a) && !a.mustChangePassword && <span className="badge-green">OK</span>}</td>
+            <td className="text-sm">{a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : 'never'}</td>
+            <td>{canReset && <button className="btn-ghost text-xs text-estate-400" onClick={() => reset(a)}>Reset password</button>}</td></tr>))}
+      </tbody></table></div>}
+      {shown && <div className="rounded-lg border border-amber-700/60 bg-amber-900/30 p-3 text-sm text-amber-100 space-y-2">
+        <p><b>New temporary password for {shown.email}</b> - shown only once. Give it to the administrator privately; they must set a new one at first sign-in.</p>
+        <div className="flex items-center gap-2 flex-wrap"><code className="font-mono text-base bg-black/30 px-2 py-1 rounded select-all">{shown.temporaryPassword}</code>
+          <button className="btn-secondary text-xs" onClick={() => copy(shown.temporaryPassword)}>Copy</button><button className="btn-ghost text-xs" onClick={() => setShown(null)}>Hide</button></div></div>}
+    </div>
+  );
+}
+
 function TenantDetail({ me }) {
   const { id } = useParams(); const nav = useNavigate();
   const [t, setT] = useState(null); const [plans, setPlans] = useState([]); const [currencies, setCurrencies] = useState([]);
@@ -220,6 +254,7 @@ function TenantDetail({ me }) {
           <div><label className="label">Max units (hard cap)</label><input className="input" type="number" value={price.maxUnits} onChange={(ev) => setPrice({ ...price, maxUnits: ev.target.value })} /></div>
           <button className="btn-primary justify-center" onClick={() => act(() => api.put(`/tenants/${id}/pricing`, { customUnitAmount: price.customUnitAmount === '' ? null : String(price.customUnitAmount), committedUnits: num(price.committedUnits), maxUnits: num(price.maxUnits), applyNow: true }), 'Pricing saved')}>Save pricing</button></div>
         <p className="text-xs text-slate-500">Saving applies immediately and prorates the current period. Leave “custom price” empty to use the plan price.</p></div>}
+      <AdminsPanel id={id} t={t} me={me} />
       <PrepaidPanel id={id} t={t} me={me} reload={load} />
       <div className="table-container"><table className="table"><thead><tr><th>Invoice</th><th>Issued</th><th>Units</th><th>Total</th><th>Paid</th><th>Status</th><th /></tr></thead><tbody>
         {t.invoices.map((i) => <tr key={i.id}><td className="font-mono">{i.number}</td><td className="text-sm">{day(i.issuedAt)}</td><td>{i.units}</td><td className="font-mono">{fmt(i.total, i.currency)}</td><td className="font-mono">{fmt(i.amountPaid, i.currency)}</td><td><span className={stBadge[i.status]}>{i.status}</span></td>

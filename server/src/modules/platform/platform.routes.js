@@ -70,6 +70,7 @@ router.post('/tenants/:id/prepaid/payments', need('subscriptions:update'), wrap(
 router.post('/tenants/:id/prepaid/payments/:paymentId/void', need('subscriptions:update'), wrap(async (req, res) => res.json(await PP.voidPayment(req.params.id, req.params.paymentId, req.body?.reason, req.actor, req))));
 router.patch('/tenants/:id/prepaid/grace', need('subscriptions:update'), wrap(async (req, res) => res.json(await PP.setGraceDays(req.params.id, req.body?.graceDays, req.actor, req))));
 
+router.get('/tenants/:id/admins', need('tenants:read'), wrap(async (req, res) => res.json(await T.listAdmins(req.params.id))));
 router.post('/tenants/:id/reset-admin-password', need('tenants:update'), wrap(async (req, res) => res.json(await T.resetAdminPassword(req.params.id, req.body?.email, req.actor, req))));
 
 // ── subscription management ──────────────────────────────────────────────────

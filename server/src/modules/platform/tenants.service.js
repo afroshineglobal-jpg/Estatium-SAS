@@ -127,6 +127,15 @@ async function listTenants({ q, status, page = 1, pageSize = 25 } = {}) {
   return { total, page: Number(page) || 1, pageSize: take, items: rows.map((t) => ({ ...t, usage: byId.get(t.id) || { units: 0, residents: 0, users: 0 } })) };
 }
 
+/** Support tool: the estate's ADMIN accounts (never the password hash), so the platform can see who signs in and unlock/reset them. */
+async function listAdmins(tenantId) {
+  await getTenantOrThrow(tenantId);
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    return tx.user.findMany({ where: { tenantId, role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, email: true, phone: true, isActive: true, mustChangePassword: true, failedLogins: true, lockedUntil: true, lastLoginAt: true, createdAt: true } });
+  });
+}
+
 /** Support tool: issue a new temporary password for a tenant admin (forces change at next login, revokes old tokens). */
 async function resetAdminPassword(tenantId, adminEmail, actor, req) {
   const t = await getTenantOrThrow(tenantId);
@@ -142,4 +151,4 @@ async function resetAdminPassword(tenantId, adminEmail, actor, req) {
   return { email, temporaryPassword: pw };
 }
 
-module.exports = { resetAdminPassword, createTenant, updateTenant, setStatus, deleteTenant, listTenants, getTenantOrThrow, RESERVED_SLUGS, SLUG_RE, RETENTION_DAYS };
+module.exports = { listAdmins, resetAdminPassword, createTenant, updateTenant, setStatus, deleteTenant, listTenants, getTenantOrThrow, RESERVED_SLUGS, SLUG_RE, RETENTION_DAYS };
