@@ -17,6 +17,8 @@ const SUSPEND_GRACE_DEFAULT = 7;       // days after due date (overridable per s
 const EXPIRE_AFTER_SUSPENDED_DAYS = 30;
 
 const actorFields = (a) => ({ actorType: a?.type || 'SYSTEM', actorId: a?.id || null, actorEmail: a?.email || null });
+// SubscriptionEvent has no actorEmail column (only AuditLog does) - never spread actorFields() into it.
+const eventActor = (a) => { const { actorEmail, ...rest } = actorFields(a); return rest; };
 const dec = (v) => (v === null || v === undefined ? null : v.toString());
 
 const SUB_INCLUDE = { plan: { include: { prices: true } }, coupons: { include: { coupon: true } } };
@@ -173,7 +175,7 @@ async function changePlan(tenantId, input, actor, req, now = new Date()) {
   if (sub.status === 'ACTIVE') result = await applyMidPeriodChange(sub, oldView, newView, now, `${sub.plan.code} → ${plan.code}`, actor);
   await db.$transaction([
     db.subscription.update({ where: { id: sub.id }, data: { planId: plan.id, customUnitAmount: next.customUnitAmount, customOverageAmount: next.customOverageAmount, customFlatAmount: next.customFlatAmount, committedUnits: next.committedUnits } }),
-    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'PLAN_CHANGED', data: { from: sub.plan.code, to: plan.code, netMinor: result.proration?.netMinor ?? 0 }, ...actorFields(actor) } }),
+    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'PLAN_CHANGED', data: { from: sub.plan.code, to: plan.code, netMinor: result.proration?.netMinor ?? 0 }, ...eventActor(actor) } }),
   ]);
   await audit({ req, tenantId, ...actorFields(actor), action: 'PLAN_CHANGED', entity: 'Subscription', entityId: sub.id, before: { plan: sub.plan.code }, after: { plan: plan.code, net: result.proration ? fromMinor(result.proration.netMinor, sub.currency) : '0' } });
   return { subscription: await loadSub(tenantId), ...result };
@@ -196,7 +198,7 @@ async function setPricing(tenantId, input, actor, req, now = new Date()) {
   if (input.applyNow && sub.status === 'ACTIVE') result = await applyMidPeriodChange(sub, pricingView(sub), newView, now, 'price change', actor);
   await db.$transaction([
     db.subscription.update({ where: { id: sub.id }, data }),
-    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'PRICE_CHANGED', data: JSON.parse(JSON.stringify(data)), ...actorFields(actor) } }),
+    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'PRICE_CHANGED', data: JSON.parse(JSON.stringify(data)), ...eventActor(actor) } }),
   ]);
   await audit({ req, tenantId, ...actorFields(actor), action: 'PRICING_CHANGED', entity: 'Subscription', entityId: sub.id, before: Object.fromEntries(Object.keys(data).map((k) => [k, sub[k]?.toString?.() ?? sub[k] ?? null])), after: JSON.parse(JSON.stringify(data)) });
   return { subscription: await loadSub(tenantId), ...result };
@@ -213,7 +215,7 @@ async function changeCurrency(tenantId, code, actor, req) {
   await db.$transaction([
     db.tenant.update({ where: { id: tenantId }, data: { currency: cur } }),
     db.subscription.update({ where: { id: sub.id }, data: { currency: cur, customUnitAmount: null, customOverageAmount: null, customFlatAmount: null, creditBalance: '0' } }),
-    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'CURRENCY_CHANGED', data: { from: sub.currency, to: cur, note: 'custom prices reset; credit balance cleared' }, ...actorFields(actor) } }),
+    db.subscriptionEvent.create({ data: { subscriptionId: sub.id, tenantId, type: 'CURRENCY_CHANGED', data: { from: sub.currency, to: cur, note: 'custom prices reset; credit balance cleared' }, ...eventActor(actor) } }),
   ]);
   require('../../middleware/auth.middleware').invalidateTenant(tenantId);
   await audit({ req, tenantId, ...actorFields(actor), action: 'CURRENCY_CHANGED', entity: 'Tenant', entityId: tenantId, before: { currency: sub.currency }, after: { currency: cur } });

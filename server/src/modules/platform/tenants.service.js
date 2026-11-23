@@ -14,6 +14,8 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RETENTION_DAYS = 30;
 
 const actorFields = (actor) => ({ actorType: actor?.type || 'SYSTEM', actorId: actor?.id || null, actorEmail: actor?.email || null });
+// SubscriptionEvent has no actorEmail column (only AuditLog does) - never spread actorFields() into it.
+const eventActor = (a) => { const { actorEmail, ...rest } = actorFields(a); return rest; };
 const tempPassword = () => `${crypto.randomBytes(9).toString('base64url')}Aa1`;   // satisfies the password policy
 
 async function getTenantOrThrow(id) {
@@ -65,7 +67,7 @@ async function createTenant(input, actor, req) {
       committedUnits: input.committedUnits ?? null, maxUnits: input.maxUnits ?? null, contractReference: input.contractReference || null,
       trialEndsAt, currentPeriodStart: now, currentPeriodEnd: periodEnd,
     } });
-    await tx.subscriptionEvent.create({ data: { subscriptionId: subscription.id, tenantId: id, type: 'CREATED', data: { plan: plan.code, currency: currency.code, status }, ...actorFields(actor) } });
+    await tx.subscriptionEvent.create({ data: { subscriptionId: subscription.id, tenantId: id, type: 'CREATED', data: { plan: plan.code, currency: currency.code, status }, ...eventActor(actor) } });
     await tx.user.create({ data: { tenantId: id, email: adminEmail, password: hash, role: 'ADMIN', name: adminName, mustChangePassword: true } });
     await tx.setting.createMany({ data: [
       { tenantId: id, key: 'estate_name', value: name }, { tenantId: id, key: 'estate_address', value: input.address || '' },
@@ -98,7 +100,7 @@ async function setStatus(id, to, { reason = null, actor, req, now = new Date() }
   if (t.subscription) {
     const subStatus = subscriptionStatusFor(to);
     ops.push(db.subscription.update({ where: { id: t.subscription.id }, data: { status: subStatus, ...(subStatus === 'CANCELLED' ? { cancelledAt: now } : {}) } }));
-    ops.push(db.subscriptionEvent.create({ data: { subscriptionId: t.subscription.id, tenantId: id, type: 'STATUS_CHANGED', data: { from: t.status, to, reason }, ...actorFields(actor) } }));
+    ops.push(db.subscriptionEvent.create({ data: { subscriptionId: t.subscription.id, tenantId: id, type: 'STATUS_CHANGED', data: { from: t.status, to, reason }, ...eventActor(actor) } }));
   }
   const [tenant] = await db.$transaction(ops);
   invalidateTenant(id);
