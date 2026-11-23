@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Users, Home, Phone, Mail, Trash2, Edit, UserPlus } from 'lucide-react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import ImportResidentsModal from '../components/ImportResidentsModal';
 
 function AddResidentModal({ onClose, onDone, units }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', unitId: '', residentType: 'TENANT' });
@@ -240,6 +241,7 @@ export default function Residents() {
         </div>
         <div className="flex gap-2">
           <button className="btn-secondary" onClick={() => setModal('block')}><Home size={16} /> Add Block</button>
+          <button className="btn-secondary" onClick={() => setModal('import')}><UserPlus size={16} /> Import CSV</button>
           <button className="btn-primary" onClick={() => setModal('resident')}><Plus size={16} /> Add Resident</button>
         </div>
       </div>
@@ -313,6 +315,7 @@ export default function Residents() {
 
       {modal === 'resident' && <AddResidentModal onClose={() => setModal(null)} onDone={load} units={units} />}
       {modal === 'block' && <AddBlockModal onClose={() => setModal(null)} onDone={load} />}
+      {modal === 'import' && <ImportResidentsModal onClose={() => setModal(null)} onDone={load} />}
       {selected && <ResidentDetail resident={selected} onClose={() => setSelected(null)} />}
       {manageBlock && <ManageUnitsModal block={manageBlock} units={units} onClose={() => setManageBlock(null)} onDone={load} />}
     </div>

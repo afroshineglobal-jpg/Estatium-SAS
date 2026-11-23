@@ -7,6 +7,7 @@ const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { notify } = require('../../utils/notify');
 const { audit } = require('../../utils/audit');
 const H = require('../../utils/http');
+const importer = require('./import.service');
 
 const ADMIN_ROLES = ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN'];
 const userSelect = { id: true, name: true, email: true, phone: true, isActive: true };
@@ -60,6 +61,10 @@ router.post('/', authenticate, authorize(...ADMIN_ROLES), H.wrap(async (req, res
   const { password: _p, ...user } = created;                       // eslint-disable-line no-unused-vars
   res.status(201).json({ user, resident: created.resident, ...(b.password ? {} : { temporaryPassword: pw }) });
 }));
+
+// Bulk import from CSV (estate ADMIN only). "check" writes nothing; "run" creates each valid row on its own.
+router.post('/import/check', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.json(await importer.check(req.body?.csv, { createMissing: req.body?.createMissing === true }))));
+router.post('/import', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.status(201).json(await importer.run(req.body?.csv, { createMissing: req.body?.createMissing === true }, req))));
 
 // GET /api/residents/:id — staff, or the resident themself
 router.get('/:id', authenticate, H.wrap(async (req, res) => {
