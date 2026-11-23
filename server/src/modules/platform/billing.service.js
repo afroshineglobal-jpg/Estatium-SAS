@@ -248,7 +248,7 @@ async function convertTrial(tenantId, { actor = { type: 'SYSTEM' }, now = new Da
 }
 
 async function processTrials(now) {
-  const due = await db.subscription.findMany({ where: { status: 'TRIAL', trialEndsAt: { lte: now } }, include: { plan: true } });
+  const due = await db.subscription.findMany({ where: { status: 'TRIAL', trialEndsAt: { lte: now }, billingMode: { not: 'MANUAL_PREPAID' } }, include: { plan: true } });
   let converted = 0, expired = 0;
   for (const s of due) {
     try {
@@ -263,7 +263,7 @@ async function processTrials(now) {
 }
 
 async function processRenewals(now) {
-  const due = await db.subscription.findMany({ where: { status: 'ACTIVE', currentPeriodEnd: { lte: now } }, include: SUB_INCLUDE });
+  const due = await db.subscription.findMany({ where: { status: 'ACTIVE', currentPeriodEnd: { lte: now }, billingMode: { not: 'MANUAL_PREPAID' } }, include: SUB_INCLUDE });
   let renewed = 0, ended = 0;
   for (const sub of due) {
     try {

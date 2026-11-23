@@ -8,7 +8,9 @@ const { evaluateAccess } = require('../lifecycle/lifecycle');
 const cache = new Map(); const TTL = 15000;
 async function getTenant(id) {
   const hit = cache.get(id); if (hit && Date.now() - hit.at < TTL) return hit.tenant;
-  const tenant = await prisma.system.tenant.findUnique({ where: { id }, select: { id: true, slug: true, name: true, status: true, currency: true, timezone: true, trialEndsAt: true } });
+  const row = await prisma.system.tenant.findUnique({ where: { id }, select: { id: true, slug: true, name: true, status: true, currency: true, timezone: true, trialEndsAt: true, subscription: { select: { billingMode: true, paidThrough: true, prepaidGraceDays: true } } } });
+  const { subscription: sub, ...rest } = row || {};
+  const tenant = row ? { ...rest, billingMode: sub?.billingMode ?? null, paidThrough: sub?.paidThrough ?? null, prepaidGraceDays: sub?.prepaidGraceDays ?? null } : null;
   cache.set(id, { at: Date.now(), tenant }); return tenant;
 }
 const invalidateTenant = (id) => { if (id) cache.delete(id); else cache.clear(); };

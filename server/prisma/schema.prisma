@@ -215,6 +215,7 @@ model Currency {
 
   tenants        Tenant[]
   planPrices     PlanPrice[]
+  prepaidPayments PrepaidPayment[]
 }
 
 model ExchangeRate {
@@ -271,6 +272,7 @@ model Tenant {
   subscription    Subscription?
   invoices        Invoice[]
   usageRecords    UsageRecord[]
+  prepaidPayments PrepaidPayment[]
 
   // tenant-scoped back-relations
   users                 User[]
@@ -381,6 +383,9 @@ model Subscription {
   autoConvert         Boolean            @default(true)       // trial -> active automatically
   paymentTermsDays    Int                @default(14)
   graceDays           Int                @default(7)          // after due date before SUSPENDED
+  billingMode         String             @default("MANUAL_PREPAID") // MANUAL_PREPAID (pilot) | INVOICED (automatic invoicing engine)
+  paidThrough         DateTime?          // last paid day (inclusive, UTC); recomputed from PrepaidPayment, never typed in
+  prepaidGraceDays    Int                @default(30)         // full access for this long after paidThrough, then read-only
 
   trialEndsAt         DateTime?
   currentPeriodStart  DateTime
@@ -473,6 +478,33 @@ model InvoiceLine {
 }
 
 // Payments of SaaS invoices by tenants. Gateway fields are populated in the payment-gateway phase.
+// Manual prepaid payments (pilot). Never edited or deleted: a mistake is VOIDED and re-entered.
+model PrepaidPayment {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  amount       Decimal   @db.Decimal(14, 2)
+  currency     String    @db.Char(3)
+  currencyRef  Currency  @relation(fields: [currency], references: [code])
+  periodFrom   DateTime  @db.Date
+  periodTo     DateTime  @db.Date
+  method       String    @default("BANK_TRANSFER")
+  reference    String?
+  note         String?
+  status       String    @default("RECORDED") // RECORDED | VOIDED
+  provider     String?                         // future payment gateways
+  providerRef  String?
+  voidedAt     DateTime?
+  voidReason   String?
+  voidedById   String?
+  recordedById String?
+  paidAt       DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+
+  @@unique([provider, providerRef])
+  @@index([tenantId, paidAt(sort: Desc)])
+}
+
 model PlatformPayment {
   id            String                @id @default(uuid())
   invoiceId     String

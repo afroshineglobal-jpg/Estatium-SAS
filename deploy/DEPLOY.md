@@ -20,6 +20,7 @@ sudo mkdir -p /var/www/estatium && sudo rm -rf /var/www/estatium/* && sudo cp -a
 2. `sudo -H -u estatium git -C /opt/estatium/app pull --ff-only`
 3. Apply any new `server/sql/00N_*.sql` as the OWNER role (see below); never edit applied files.
 4. Re-run the install block above if `package-lock.json` changed; rebuild the client if `client/` changed.
+   If `server/prisma/schema.prisma` changed, ALSO run `sudo -H -u estatium npx prisma generate` (in `server/`) before restarting.
 5. `sudo systemctl restart estatium && sudo systemctl status estatium --no-pager`
 6. `curl -s http://127.0.0.1:3001/api/health` should return `{"status":"OK",...}`
 

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { SocketProvider } from './hooks/useSocket';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import PrepaidBanner from './components/PrepaidBanner';
 import OfflineBanner from './components/OfflineBanner';
 
 // Pages
@@ -85,13 +86,14 @@ function AppLayout() {
   const { user, tenant } = useAuth();
   if (!user) return null;
   if (user.mustChangePassword) return <ChangePassword />;
-  if (tenant?.status === 'EXPIRED') return <ExpiredScreen />;
+  if (tenant?.status === 'EXPIRED' && tenant.billingMode !== 'MANUAL_PREPAID') return <ExpiredScreen />;
 
   return (
     <div className="min-h-screen">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Header onMenuToggle={() => setSidebarOpen(v => !v)} />
       <StatusBanner />
+      <PrepaidBanner />
       <main className="lg:ml-[var(--sidebar-width)] pt-[var(--header-height)]">
         <div className="p-4 lg:p-6 max-w-7xl mx-auto">
           <Routes>

@@ -116,6 +116,74 @@ function Tenants({ me }) {
   );
 }
 
+
+const PP_BADGE = { UNPAID: 'badge-gray', ACTIVE: 'badge-green', APPROACHING: 'badge-blue', DUE_SOON: 'badge-yellow', URGENT: 'badge-yellow', GRACE: 'badge-red', READ_ONLY: 'badge-red' };
+const PP_LABEL = { UNPAID: 'No payment / trial date', ACTIVE: 'Active', APPROACHING: 'Approaching (≤90 days)', DUE_SOON: 'Due soon (≤60 days)', URGENT: 'Urgent (≤30 days)', GRACE: 'Overdue - grace period', READ_ONLY: 'Read-only' };
+const iso = (d) => new Date(d).toISOString().slice(0, 10);
+const lastDay = (expiresAt) => iso(new Date(new Date(expiresAt).getTime() - 86400000));
+// last day of an n-month period that starts on `from` (YYYY-MM-DD): 2026-12-01 + 3 months -> 2027-02-28
+const periodEnd = (from, n) => { const [y, m, d] = from.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + n, 1)); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate(); dt.setUTCDate(Math.min(d, last)); dt.setUTCDate(dt.getUTCDate() - 1); return dt.toISOString().slice(0, 10); };
+
+function PrepaidPanel({ id, t, me, reload }) {
+  const p = t.prepaid;
+  const next = p?.paidThrough ? iso(new Date(new Date(p.paidThrough).getTime() + 86400000)) : iso(new Date());
+  const [f, setF] = useState({ amount: '', periodFrom: next, periodTo: '', method: 'BANK_TRANSFER', reference: '', note: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setF((x) => ({ ...x, periodFrom: next })); }, [next]);
+  if (!p || p.billingMode !== 'MANUAL_PREPAID') return null;
+  const canEdit = can(me, 'subscriptions:update');
+  const set = (k) => (ev) => setF({ ...f, [k]: ev.target.value });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/tenants/${id}/prepaid/payments`, { ...f, amount: String(f.amount) });
+      toast.success(`Payment recorded. Paid through ${iso(r.paidThrough)}`);
+      (r.warnings || []).forEach((w) => toast(w, { icon: '⚠️', duration: 8000 }));
+      setF({ amount: '', periodFrom: iso(new Date(new Date(r.paidThrough).getTime() + 86400000)), periodTo: '', method: 'BANK_TRANSFER', reference: '', note: '' });
+      reload();
+    } catch { /* interceptor toasts */ } finally { setBusy(false); }
+  };
+  const voidIt = async (x) => {
+    const reason = prompt(`Void this payment of ${fmt(x.amount, x.currency)} (${iso(x.periodFrom)} to ${iso(x.periodTo)})?\nReason (required):`);
+    if (!reason) return;
+    try { await api.post(`/tenants/${id}/prepaid/payments/${x.id}/void`, { reason }); toast.success('Payment voided'); reload(); } catch { /* toast */ }
+  };
+  return (
+    <div className="card p-4 space-y-4">
+      <div className="flex items-center gap-3 flex-wrap"><h3 className="font-semibold">Prepaid subscription</h3><span className={PP_BADGE[p.state]}>{PP_LABEL[p.state] || p.state}</span>
+        <span className="text-xs text-slate-500 ml-auto">Billed in {p.currency} · {p.graceDays} grace days</span></div>
+      <div className="grid sm:grid-cols-4 gap-3 text-sm">
+        <div><p className="text-xs text-slate-500">{p.source === 'TRIAL' ? 'Trial ends' : 'Paid through'}</p><p className="text-lg font-semibold">{p.expiresAt ? lastDay(p.expiresAt) : '—'}</p></div>
+        <div><p className="text-xs text-slate-500">{p.daysLeft > 0 ? 'Days left' : 'Grace days left'}</p><p className="text-lg font-semibold">{p.daysLeft > 0 ? p.daysLeft : (p.graceDaysLeft ?? '—')}</p></div>
+        <div><p className="text-xs text-slate-500">Read-only from</p><p className="text-lg font-semibold">{p.readOnlyFrom ? iso(p.readOnlyFrom) : '—'}</p></div>
+        <div><p className="text-xs text-slate-500">Grace days</p>{canEdit
+          ? <input className="input w-24" type="number" min="0" max="365" defaultValue={p.graceDays} onBlur={(ev) => { const v = Number(ev.target.value); if (v !== p.graceDays) api.patch(`/tenants/${id}/prepaid/grace`, { graceDays: v }).then(() => { toast.success('Grace period saved'); reload(); }).catch(() => {}); }} />
+          : <p className="text-lg font-semibold">{p.graceDays}</p>}</div>
+      </div>
+      {canEdit && <div className="border border-slate-800 rounded-lg p-3 space-y-3"><h4 className="text-sm font-medium">Record a payment received ({t.currency})</h4>
+        <div className="grid md:grid-cols-4 gap-3">
+          <div><label className="label">Amount ({t.currency})</label><input className="input" inputMode="decimal" placeholder="e.g. 90000" value={f.amount} onChange={set('amount')} /></div>
+          <div><label className="label">Covers from</label><input className="input" type="date" value={f.periodFrom} onChange={set('periodFrom')} /></div>
+          <div><label className="label">Covers until (last paid day)</label><input className="input" type="date" value={f.periodTo} onChange={set('periodTo')} /></div>
+          <div><label className="label">Method</label><select className="select" value={f.method} onChange={set('method')}>{['BANK_TRANSFER', 'CASH', 'CARD', 'MOBILE_MONEY', 'OTHER'].map((m) => <option key={m}>{m}</option>)}</select></div>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center"><span className="text-xs text-slate-500">Quick fill:</span>
+          {[1, 3, 6, 12].map((n) => <button key={n} type="button" className="btn-ghost text-xs" onClick={() => setF({ ...f, periodTo: periodEnd(f.periodFrom, n) })}>{n} month{n > 1 ? 's' : ''}</button>)}</div>
+        <div className="grid md:grid-cols-3 gap-3 items-end">
+          <div><label className="label">Bank reference</label><input className="input" value={f.reference} onChange={set('reference')} /></div>
+          <div><label className="label">Note (optional)</label><input className="input" value={f.note} onChange={set('note')} /></div>
+          <button className="btn-primary justify-center" disabled={busy || !f.amount || !f.periodFrom || !f.periodTo} onClick={save}>{busy ? 'Saving…' : 'Record payment'}</button></div>
+        <p className="text-xs text-slate-500">The paid-through date is calculated from the period you enter, never from the amount. Mistakes are voided (kept in the history), not edited.</p></div>}
+      <div className="table-container"><table className="table"><thead><tr><th>Recorded</th><th>Covers</th><th>Amount</th><th>Method / ref</th><th>Status</th><th /></tr></thead><tbody>
+        {p.payments.length === 0 ? <tr><td colSpan={6} className="text-center py-6 text-slate-500">No payments recorded yet</td></tr> : p.payments.map((x) => (
+          <tr key={x.id} className={x.status === 'VOIDED' ? 'opacity-50' : ''}><td className="text-sm">{day(x.paidAt)}</td><td className="text-sm">{iso(x.periodFrom)} → {iso(x.periodTo)}</td><td className="font-mono">{fmt(x.amount, x.currency)}</td>
+            <td className="text-sm">{x.method}{x.reference ? ` · ${x.reference}` : ''}</td><td><span className={x.status === 'VOIDED' ? 'badge-gray' : 'badge-green'}>{x.status}</span>{x.voidReason ? <span className="text-xs text-slate-500 ml-2">{x.voidReason}</span> : null}</td>
+            <td>{canEdit && x.status === 'RECORDED' && <button className="btn-ghost text-xs text-red-400" onClick={() => voidIt(x)}>Void</button>}</td></tr>))}
+      </tbody></table></div>
+    </div>
+  );
+}
+
 function TenantDetail({ me }) {
   const { id } = useParams(); const nav = useNavigate();
   const [t, setT] = useState(null); const [plans, setPlans] = useState([]); const [currencies, setCurrencies] = useState([]);
@@ -152,6 +220,7 @@ function TenantDetail({ me }) {
           <div><label className="label">Max units (hard cap)</label><input className="input" type="number" value={price.maxUnits} onChange={(ev) => setPrice({ ...price, maxUnits: ev.target.value })} /></div>
           <button className="btn-primary justify-center" onClick={() => act(() => api.put(`/tenants/${id}/pricing`, { customUnitAmount: price.customUnitAmount === '' ? null : String(price.customUnitAmount), committedUnits: num(price.committedUnits), maxUnits: num(price.maxUnits), applyNow: true }), 'Pricing saved')}>Save pricing</button></div>
         <p className="text-xs text-slate-500">Saving applies immediately and prorates the current period. Leave “custom price” empty to use the plan price.</p></div>}
+      <PrepaidPanel id={id} t={t} me={me} reload={load} />
       <div className="table-container"><table className="table"><thead><tr><th>Invoice</th><th>Issued</th><th>Units</th><th>Total</th><th>Paid</th><th>Status</th><th /></tr></thead><tbody>
         {t.invoices.map((i) => <tr key={i.id}><td className="font-mono">{i.number}</td><td className="text-sm">{day(i.issuedAt)}</td><td>{i.units}</td><td className="font-mono">{fmt(i.total, i.currency)}</td><td className="font-mono">{fmt(i.amountPaid, i.currency)}</td><td><span className={stBadge[i.status]}>{i.status}</span></td>
           <td>{i.status === 'OPEN' && can(me, 'invoices:manage') && <button className="btn-ghost text-xs text-estate-400" onClick={() => { const a = prompt('Amount received', String(Number(i.total) - Number(i.amountPaid))); if (a) act(() => api.post(`/invoices/${i.id}/payments`, { amount: a, method: 'BANK_TRANSFER', reference: prompt('Bank reference (optional)') || undefined }), 'Payment recorded'); }}>Record payment</button>}</td></tr>)}</tbody></table></div>
