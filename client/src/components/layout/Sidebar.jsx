@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import {
-  LayoutDashboard, Users, UserCheck, UserPlus, Package, CalendarRange,
+  LayoutDashboard, Users, UserCheck, UserPlus, Download, Package, CalendarRange,
   CreditCard, Receipt, Car, Briefcase, Wrench, AlertTriangle,
   MessageSquare, BarChart3, Megaphone, Settings, LogOut,
   Shield, ChevronRight
@@ -23,6 +23,7 @@ const allModules = [
   { path: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['ADMIN', 'FINANCE_ADMIN', 'SECURITY_ADMIN'] },
   { path: '/advertisements', icon: Megaphone, label: 'Ads & Banners', roles: ['ADMIN', 'FINANCE_ADMIN', 'RESIDENT'] },
   { path: '/subscription', icon: Receipt, label: 'Subscription', roles: ['ADMIN', 'FINANCE_ADMIN'] },
+  { path: '/exports', icon: Download, label: 'Records & Exports', roles: ['ADMIN'] },
   { path: '/settings', icon: Settings, label: 'Settings', roles: ['ADMIN'] },
 ];
 

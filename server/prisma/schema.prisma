@@ -638,6 +638,8 @@ model Resident {
   residentType  ResidentType @default(TENANT)
   moveInDate    DateTime?
   moveOutDate   DateTime?
+  moveOutNote   String?
+  vacatedById   String?
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
 
@@ -838,7 +840,7 @@ model Vehicle {
   createdAt   DateTime     @default(now())
   vehicleLogs VehicleLog[]
 
-  @@unique([tenantId, plateNumber])
+  @@index([tenantId, plateNumber])   // uniqueness among ACTIVE vehicles is a partial unique index in sql/008
   @@index([tenantId, residentId])
 }
 
@@ -869,6 +871,10 @@ model StaffMember {
   accessStart    String?
   accessEnd      String?
   isActive       Boolean         @default(true)
+  status          String          @default("ACTIVE") // ACTIVE | SUSPENDED | DEACTIVATED | LEFT
+  statusNote      String?
+  statusChangedAt DateTime?
+  leftAt          DateTime?
   createdAt      DateTime        @default(now())
   attendanceLogs AttendanceLog[]
   tasks          Task[]

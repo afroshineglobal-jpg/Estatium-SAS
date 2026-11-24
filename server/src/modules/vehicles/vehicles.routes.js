@@ -15,7 +15,7 @@ const A = (req) => ({ req, tenantId: req.tenant?.id, actorType: 'TENANT_USER', a
 // Residents see all of their own vehicles (any status). The estate ADMIN sees everything, optionally filtered.
 // Security and guards only ever see APPROVED vehicles, so a vehicle nobody has vetted can never be waved through.
 router.get('/', authenticate, H.wrap(async (req, res) => {
-  const where = {};
+  const where = { isActive: true };                 // vehicles of residents who moved out stay in the database (history/exports) but leave the gate lists
   if (req.user.role === 'RESIDENT') {
     const r = await prisma.resident.findFirst({ where: { userId: req.user.id } });
     if (!r) return res.json([]);              // legacy: no profile => every vehicle in the estate
@@ -38,7 +38,7 @@ router.post('/', authenticate, authorize('RESIDENT', 'ADMIN'), H.wrap(async (req
   const type = b.type ? H.oneOf(b.type, ['CAR', 'BIKE', 'TRUCK', 'OTHER'], 'type') : 'CAR';
   if (isResident && (await prisma.vehicle.count({ where: { residentId, status: 'PENDING' } })) >= MAX_OPEN_REQUESTS)
     throw H.conflict(`You already have ${MAX_OPEN_REQUESTS} requests waiting for approval`, 'TOO_MANY_REQUESTS');
-  const existing = await prisma.vehicle.findFirst({ where: { plateNumber } });
+  const existing = await prisma.vehicle.findFirst({ where: { plateNumber, isActive: true } });
   if (existing && existing.status !== 'REJECTED') throw H.conflict('A vehicle with this plate number is already registered or waiting for approval', 'PLATE_EXISTS');
   const qrCode = await QRCode.toDataURL(JSON.stringify({ plateNumber, type: 'VEHICLE' }));
   const now = new Date();
@@ -84,7 +84,7 @@ router.post('/:id/log', authenticate, authorize(...GATE), H.wrap(async (req, res
   const vehicleId = H.requireId(req.params.id);
   const v = await prisma.vehicle.findFirst({ where: { id: vehicleId } });
   if (!v) throw H.notFound('Vehicle');
-  if (v.status !== 'APPROVED') throw H.conflict('This vehicle has not been approved', 'VEHICLE_NOT_APPROVED');
+  if (v.status !== 'APPROVED' || !v.isActive) throw H.conflict('This vehicle is not registered at the gate', 'VEHICLE_NOT_APPROVED');
   res.status(201).json(await prisma.vehicleLog.create({ data: { vehicleId, action: H.oneOf(req.body?.action, ['ENTRY', 'EXIT'], 'action'), guardNote: H.str(req.body?.guardNote, { max: 300 }) } }));
 }));
 

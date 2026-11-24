@@ -26,6 +26,7 @@ import Advertisements from './pages/Advertisements';
 import Settings from './pages/Settings';
 import Subscription from './pages/Subscription';
 import Registrations from './pages/Registrations';
+import Exports from './pages/Exports';
 import Register from './pages/Register';
 import UpdateBanner from './components/UpdateBanner';
 import PlatformApp, { PlatformLogin } from './platform/PlatformApp';
@@ -103,6 +104,7 @@ function AppLayout() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/residents" element={<Residents />} />
             <Route path="/registrations" element={<Registrations />} />
+            <Route path="/exports" element={<Exports />} />
             <Route path="/visitors" element={<Visitors />} />
             <Route path="/parcels" element={<Parcels />} />
             <Route path="/amenities" element={<Amenities />} />

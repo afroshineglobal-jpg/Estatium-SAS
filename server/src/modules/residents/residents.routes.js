@@ -8,6 +8,8 @@ const { notify } = require('../../utils/notify');
 const { audit } = require('../../utils/audit');
 const H = require('../../utils/http');
 const importer = require('./import.service');
+const { assertUnitVacant } = require('./occupancy');
+const moveout = require('./moveout.service');
 
 const ADMIN_ROLES = ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN'];
 const userSelect = { id: true, name: true, email: true, phone: true, isActive: true };
@@ -22,17 +24,21 @@ async function assertOwnerOrStaff(req, residentId) {
 
 // GET /api/residents
 router.get('/', authenticate, authorize(...ADMIN_ROLES), H.wrap(async (req, res) => {
-  res.json(await prisma.resident.findMany({ include: { user: { select: userSelect }, unit: { include: { block: true } }, members: true, vehicles: true }, orderBy: { createdAt: 'desc' }, take: 1000 }));
+  const st = req.query.status || 'active';                                  // active (default) | vacated | all
+  const where = st === 'all' ? {} : { isActive: H.oneOf(st, ['active', 'vacated'], 'status') === 'active' };
+  res.json(await prisma.resident.findMany({ where, include: { user: { select: userSelect }, unit: { include: { block: true } }, members: true, vehicles: true }, orderBy: { createdAt: 'desc' }, take: 1000 }));
 }));
 
 // GET /api/residents/units — guards need it (walk-in visitors); residents must not see their neighbours' names/phones
 router.get('/units', authenticate, H.wrap(async (req, res) => {
   const staff = req.user.role !== 'RESIDENT';
-  res.json(await prisma.unit.findMany({
+  const units = await prisma.unit.findMany({
     where: { isActive: true },
-    include: { block: true, ...(staff ? { residents: { include: { user: { select: { name: true, phone: true } } } } } : {}) },
+    include: { block: true, residents: { where: { isActive: true }, ...(staff ? { include: { user: { select: { name: true, phone: true } } } } : { select: { id: true } }) } },
     orderBy: [{ block: { name: 'asc' } }, { unitNumber: 'asc' }],
-  }));
+  });
+  // Occupancy is derived from ACTIVE residents (the stored flag was never maintained); residents never see neighbours' details.
+  res.json(units.map((u) => ({ ...u, isOccupied: u.residents.length > 0, residents: staff ? u.residents : undefined })));
 }));
 
 router.get('/blocks', authenticate, H.wrap(async (req, res) => res.json(await prisma.block.findMany({ include: { units: true } }))));
@@ -47,6 +53,7 @@ router.post('/', authenticate, authorize(...ADMIN_ROLES), H.wrap(async (req, res
   const unit = await prisma.unit.findFirst({ where: { id: unitId, isActive: true } });
   if (!unit) throw H.notFound('Unit');
   if (await prisma.user.findFirst({ where: { email } })) throw H.conflict('Email already registered', 'DUPLICATE');
+  await assertUnitVacant(unitId);
 
   const pw = b.password ? H.password(b.password) : tempPassword();
   const created = await prisma.user.create({                      // nested create => user + resident are written atomically
@@ -93,13 +100,18 @@ router.put('/:id', authenticate, authorize(...ADMIN_ROLES), H.wrap(async (req, r
   if (b.residentType !== undefined) resData.residentType = H.oneOf(b.residentType, ['OWNER', 'TENANT'], 'residentType');
   if (b.unitId !== undefined && b.unitId !== resident.unitId) {
     if (!(await prisma.unit.findFirst({ where: { id: H.requireId(b.unitId, 'unitId'), isActive: true } }))) throw H.notFound('Unit');
+    await assertUnitVacant(b.unitId, id);
     resData.unitId = b.unitId;
   }
-  if (b.isActive !== undefined) { userData.isActive = !!b.isActive; resData.isActive = !!b.isActive; resData.moveOutDate = b.isActive ? null : new Date(); if (!b.isActive) userData.tokenVersion = { increment: 1 }; }
+  if (b.isActive !== undefined) throw H.bad('Use "Mark as vacated" or "Reinstate" to change whether a resident lives here');
   if (Object.keys(userData).length) await prisma.user.update({ where: { id: resident.userId }, data: userData });
   const updated = Object.keys(resData).length ? await prisma.resident.update({ where: { id }, data: resData }) : resident;
   res.json(updated);
 }));
+
+// Move-out and reinstatement (nothing is deleted; see moveout.service.js)
+router.post('/:id/vacate', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.json(await moveout.vacate(req, H.requireId(req.params.id), { date: req.body?.moveOutDate, note: req.body?.note }))));
+router.post('/:id/reinstate', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.json(await moveout.reinstate(req, H.requireId(req.params.id), { restoreVehicles: req.body?.restoreVehicles !== false }))));
 
 // Family members — staff or the household itself, capped by the estate's setting
 router.post('/:id/members', authenticate, H.wrap(async (req, res) => {

@@ -26,6 +26,7 @@ function buildApp() {
   app.use('/api/auth',           require('./modules/auth/auth.routes'));
   app.use('/api/subscription',   require('./modules/subscription/subscription.routes'));
   app.use('/api/registrations',  require('./modules/registration/registration.routes'));
+  app.use('/api/exports',        require('./modules/exports/exports.routes'));
   app.use('/api/residents',      require('./modules/residents/residents.routes'));
   app.use('/api/visitors',       require('./modules/visitors/visitors.routes'));
   app.use('/api/parcels',        require('./modules/parcels/parcels.routes'));

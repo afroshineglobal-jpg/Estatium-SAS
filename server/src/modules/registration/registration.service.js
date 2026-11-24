@@ -163,6 +163,7 @@ async function approve(id, req) {
   try {
     const unit = r.unitId && await prisma.unit.findFirst({ where: { id: r.unitId, isActive: true } });
     if (!unit) throw H.bad('The unit this person chose no longer exists. Reject the request and ask them to apply again.', 'UNIT_GONE');
+    await require('../residents/occupancy').assertUnitVacant(r.unitId);
     if (await prisma.user.findFirst({ where: { email: r.email } })) throw H.conflict('An account with this email already exists', 'EMAIL_UNAVAILABLE');
     user = await prisma.user.create({ data: { name: r.name, email: r.email, phone: r.phone, password: r.passwordHash, role: 'RESIDENT', mustChangePassword: false,
       resident: { create: { tenantId: req.tenant.id, unitId: r.unitId, residentType: r.residentType, moveInDate: new Date() } } }, include: { resident: true } });

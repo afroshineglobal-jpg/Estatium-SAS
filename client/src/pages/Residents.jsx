@@ -4,6 +4,7 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 import ImportResidentsModal from '../components/ImportResidentsModal';
 import TempPasswordModal from '../components/TempPasswordModal';
+import { downloadCsv } from '../utils/download';
 
 function AddResidentModal({ onClose, onDone, units }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', unitId: '', residentType: 'TENANT' });
@@ -134,7 +135,17 @@ function ManageUnitsModal({ block, units, onClose, onDone }) {
   );
 }
 
-function ResidentDetail({ resident, onClose }) {
+function ResidentDetail({ resident, onClose, onChanged }) {
+  const [vac, setVac] = useState(null);
+  const living = resident.isActive !== false;
+  const slug = (resident.user?.name || 'resident').replace(/\W+/g, '-');
+  const doVacate = async () => {
+    try { const r = await api.post(`/residents/${resident.id}/vacate`, { moveOutDate: vac.date || undefined, note: vac.note }); toast.success(`Moved out. ${r.vehiclesDeactivated} vehicle(s) switched off, ${r.visitorsCancelled} expected visitor(s) cancelled.`); onChanged(); onClose(); } catch {}
+  };
+  const doReinstate = async () => {
+    if (!window.confirm('Reinstate this resident? Their login and vehicles are switched back on (the unit must be vacant).')) return;
+    try { await api.post(`/residents/${resident.id}/reinstate`, {}); toast.success('Resident reinstated'); onChanged(); onClose(); } catch {}
+  };
   const [newMember, setNewMember] = useState({ name: '', relation: '', phone: '' });
   const [addingMember, setAddingMember] = useState(false);
   const [shown, setShown] = useState(null);
@@ -171,6 +182,26 @@ function ResidentDetail({ resident, onClose }) {
             <div><p className="text-slate-500">Phone</p><p className="text-slate-300">{resident.user?.phone || '—'}</p></div>
           </div>
 
+          {!living && <div className="card p-3 text-sm border border-amber-800/50"><p className="text-amber-300 font-medium">Moved out{resident.moveOutDate ? ` on ${new Date(resident.moveOutDate).toLocaleDateString()}` : ''}</p>{resident.moveOutNote && <p className="text-slate-400">Note: {resident.moveOutNote}</p>}<p className="text-xs text-slate-500 mt-1">Their records, visitors and vehicle history are kept.</p></div>}
+          <p className="text-xs text-slate-500">Moved in: {resident.moveInDate ? new Date(resident.moveInDate).toLocaleDateString() : '—'}</p>
+
+          {vac ? (
+            <div className="card p-4 space-y-2">
+              <p className="text-sm font-semibold text-slate-200">Mark {resident.user?.name} as moved out</p>
+              <ul className="text-xs text-slate-400 list-disc pl-4 space-y-0.5"><li>Their login stops working immediately.</li><li>Their vehicles are removed from the gate list.</li><li>Visitors they were expecting are cancelled.</li><li>Nothing is deleted — all history stays and can be exported.</li><li>The unit becomes vacant so a new resident can be added.</li></ul>
+              <div><label className="label">Move-out date</label><input type="date" className="input" value={vac.date} onChange={e => setVac({ ...vac, date: e.target.value })} /></div>
+              <input className="input" placeholder="Note (optional), e.g. lease ended" value={vac.note} onChange={e => setVac({ ...vac, note: e.target.value })} />
+              <div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => setVac(null)}>Cancel</button><button className="btn-primary flex-1 justify-center" onClick={doVacate}>Confirm move-out</button></div>
+            </div>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {living ? <button className="btn-secondary" onClick={() => setVac({ date: '', note: '' })}>Mark as moved out</button> : <button className="btn-primary" onClick={doReinstate}>Reinstate</button>}
+              <button className="btn-secondary" onClick={() => downloadCsv('/exports/visitors.csv', { residentId: resident.id }, `visitors-${slug}`)}>Download visitors</button>
+              <button className="btn-secondary" onClick={() => downloadCsv('/exports/visitors.csv', { residentId: resident.id, vehiclesOnly: 1 }, `guest-vehicles-${slug}`)}>Download guest vehicles</button>
+              <button className="btn-secondary" onClick={() => downloadCsv('/exports/vehicle-movements.csv', { residentId: resident.id }, `vehicle-movements-${slug}`)}>Download vehicle in/out</button>
+            </div>
+          )}
+
           {/* Family Members */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -203,7 +234,7 @@ function ResidentDetail({ resident, onClose }) {
               <p className="text-sm font-semibold text-slate-300 mb-2">Vehicles</p>
               {resident.vehicles.map(v => (
                 <div key={v.id} className="flex items-center gap-3 py-2 border-b border-slate-800/50">
-                  <span className="badge-blue font-mono">{v.plateNumber}</span>
+                  <span className="badge-blue font-mono">{v.plateNumber}</span>{v.isActive === false && <span className="badge-gray text-xs">removed</span>}
                   <span className="text-sm text-slate-400">{v.make} {v.model} · {v.color}</span>
                 </div>
               ))}
@@ -224,11 +255,12 @@ export default function Residents() {
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
   const [manageBlock, setManageBlock] = useState(null);
+  const [view, setView] = useState('active');
 
   const load = async () => {
     try {
       const [r, u, b] = await Promise.all([
-        api.get('/residents'), api.get('/residents/units'), api.get('/residents/blocks')
+        api.get('/residents', { params: { status: 'all' } }), api.get('/residents/units'), api.get('/residents/blocks')
       ]);
       setResidents(r); setUnits(u); setBlocks(b);
     } catch {} finally { setLoading(false); }
@@ -236,7 +268,7 @@ export default function Residents() {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = residents.filter(r =>
+  const filtered = residents.filter(r => (view === 'all' || (view === 'active' ? r.isActive : !r.isActive))).filter(r =>
     r.user?.name?.toLowerCase().includes(search.toLowerCase()) ||
     r.user?.email?.toLowerCase().includes(search.toLowerCase()) ||
     `${r.unit?.block?.name}-${r.unit?.unitNumber}`.toLowerCase().includes(search.toLowerCase())
@@ -283,6 +315,11 @@ export default function Residents() {
         })}
       </div>
 
+      <div className="flex gap-2 flex-wrap items-center">
+        {[['active', 'Living here'], ['vacated', 'Moved out'], ['all', 'All']].map(([k, l]) => <button key={k} className={view === k ? 'btn-primary' : 'btn-secondary'} onClick={() => setView(k)}>{l}</button>)}
+        <button className="btn-ghost ml-auto text-xs" onClick={() => downloadCsv('/exports/residents.csv', { status: view === 'all' ? 'all' : view }, 'residents')}>Export this list</button>
+      </div>
+
       {/* Search */}
       <div className="relative">
         <Search size={16} className="absolute left-3 top-3 text-slate-500" />
@@ -308,7 +345,7 @@ export default function Residents() {
                       {r.user?.name?.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-medium text-slate-200">{r.user?.name}</p>
+                      <p className="font-medium text-slate-200">{r.user?.name}{!r.isActive && <span className="badge-gray text-xs ml-2">Moved out</span>}</p>
                       <p className="text-xs text-slate-500">{r.user?.email}</p>
                     </div>
                   </div>
@@ -317,7 +354,7 @@ export default function Residents() {
                 <td><span className={r.residentType === 'OWNER' ? 'badge-blue' : 'badge-gray'}>{r.residentType}</span></td>
                 <td className="text-slate-400 text-sm">{r.user?.phone || '—'}</td>
                 <td className="text-slate-400">{r.members?.length || 0}</td>
-                <td className="text-slate-400">{r.vehicles?.length || 0}</td>
+                <td className="text-slate-400">{r.vehicles?.filter(v => v.isActive !== false).length || 0}</td>
                 <td><Edit size={14} className="text-slate-600" /></td>
               </tr>
             ))}
@@ -328,7 +365,7 @@ export default function Residents() {
       {modal === 'resident' && <AddResidentModal onClose={() => setModal(null)} onDone={load} units={units} />}
       {modal === 'block' && <AddBlockModal onClose={() => setModal(null)} onDone={load} />}
       {modal === 'import' && <ImportResidentsModal onClose={() => setModal(null)} onDone={load} />}
-      {selected && <ResidentDetail resident={selected} onClose={() => setSelected(null)} />}
+      {selected && <ResidentDetail resident={selected} onClose={() => setSelected(null)} onChanged={load} />}
       {manageBlock && <ManageUnitsModal block={manageBlock} units={units} onClose={() => setManageBlock(null)} onDone={load} />}
     </div>
   );
