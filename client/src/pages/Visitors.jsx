@@ -557,7 +557,7 @@ export default function Visitors() {
 
     const handler = async (data) => {
       if (data.type === 'VISITOR_WAITING') {
-        await playDoorbell();
+        // the doorbell now plays globally (hooks/useSocket) so it also rings on other pages
         toast('🔔 Someone is at your gate!', {
           duration: 8000,
           icon: '🚪',

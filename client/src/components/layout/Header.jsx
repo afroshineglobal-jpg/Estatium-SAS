@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Bell, Menu, AlertTriangle, X } from 'lucide-react';
+import { Bell, Menu, AlertTriangle, X, Volume2 } from 'lucide-react';
+import SoundSettings from '../SoundSettings';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../utils/api';
 
 export default function Header({ onMenuToggle }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
+  const [showSounds, setShowSounds] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
 
   const fetchNotifs = async () => {
@@ -37,6 +39,9 @@ export default function Header({ onMenuToggle }) {
       </button>
 
       <div className="flex-1" />
+
+      <button className="btn-ghost p-2" title="Alert sounds & notifications" onClick={() => setShowSounds(true)}><Volume2 size={20} /></button>
+      {showSounds && <SoundSettings onClose={() => setShowSounds(false)} />}
 
       {/* Notifications */}
       <div className="relative">

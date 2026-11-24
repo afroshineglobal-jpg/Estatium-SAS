@@ -25,21 +25,30 @@ const initFirebase = () => {
   }
 };
 
+const stringify = (data) => Object.fromEntries(Object.entries(data || {}).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => [k, String(v)]));
+
+/**
+ * DATA-ONLY message: the title/body/kind travel in `data`, so the app's service worker decides how to show it
+ * (a different vibration pattern and urgency for VISITOR / MESSAGE / EMERGENCY, and a sound request to any open window).
+ * Returns { ok, invalid }: invalid=true means the device token is dead and should be forgotten.
+ */
 const sendPushNotification = async (fcmToken, title, body, data = {}) => {
   const app = initFirebase();
-  if (!app || !fcmToken) return null;
+  if (!app || !fcmToken) return { ok: false, invalid: false };
+  const urgent = data.kind === 'EMERGENCY' || data.kind === 'VISITOR';
   try {
-    const result = await admin.messaging().send({
+    await admin.messaging().send({
       token: fcmToken,
-      notification: { title, body },
-      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      data: stringify({ ...data, title, body }),
       android: { priority: 'high' },
-      apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+      apns: { headers: { 'apns-priority': '10' }, payload: { aps: { 'content-available': 1 } } },
+      webpush: { headers: { Urgency: urgent ? 'high' : 'normal', TTL: urgent ? '300' : '3600' } },
     });
-    return result;
+    return { ok: true, invalid: false };
   } catch (err) {
-    console.warn('Push notification failed:', err.message);
-    return null;
+    const invalid = /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(err.code || err.message || '');
+    console.warn('Push notification failed:', err.code || err.message);
+    return { ok: false, invalid };
   }
 };
 

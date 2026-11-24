@@ -30,6 +30,7 @@ import Exports from './pages/Exports';
 import Register from './pages/Register';
 import UpdateBanner from './components/UpdateBanner';
 import InstallBanner from './components/InstallBanner';
+import AlertSounds from './components/AlertSounds';
 import PlatformApp, { PlatformLogin } from './platform/PlatformApp';
 
 function ProtectedRoute({ children }) {
@@ -139,6 +140,7 @@ export default function App() {
           <OfflineBanner />
           <UpdateBanner />
           <InstallBanner />
+          <AlertSounds />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />

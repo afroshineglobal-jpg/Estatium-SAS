@@ -34,6 +34,9 @@ router.post('/notices', authenticate, authorize(...POSTERS), H.wrap(async (req, 
   } });
   const io = req.app.get('io');
   io.to(notice.targetRole ? rooms.role(req.tenant.id, notice.targetRole) : rooms.tenant(req.tenant.id)).emit('new-notice', notice);     // tenant-scoped, role-targeted
+  // Also push to phones whose app is closed (and list it in each person's bell).
+  const audience = await prisma.user.findMany({ where: { isActive: true, id: { not: req.user.id }, ...(notice.targetRole ? { role: notice.targetRole } : {}) }, select: { id: true }, take: 2000 });
+  await require('../../utils/notify').notifyMany(audience.map((u) => u.id), `📢 ${notice.title}`, String(notice.content).slice(0, 140), 'NOTICE', { noticeId: notice.id });
   res.status(201).json(notice);
 }));
 
