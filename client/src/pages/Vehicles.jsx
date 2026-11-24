@@ -125,6 +125,7 @@ export default function Vehicles() {
                 <td className="text-slate-400">{v.resident?.unit?.block?.name}-{v.resident?.unit?.unitNumber}</td>
                 <td>
                   <span className={`badge ${badge[v.status] || 'badge-yellow'}`}>{v.status}</span>
+                  {v.status === 'APPROVED' && <span className={`badge ml-1 ${v.presence === 'INSIDE' ? 'badge-green' : v.presence === 'OUTSIDE' ? 'badge-gray' : 'badge-blue'}`} title={v.presenceSince ? `Since ${new Date(v.presenceSince).toLocaleString()}` : 'No gate record yet'}>{v.presence === 'INSIDE' ? 'In estate' : v.presence === 'OUTSIDE' ? 'Out' : 'No gate record'}</span>}
                   {v.status === 'REJECTED' && v.reviewNote && <p className="text-xs text-red-300 mt-1 max-w-[220px]">Reason: {v.reviewNote}</p>}
                 </td>
                 <td>

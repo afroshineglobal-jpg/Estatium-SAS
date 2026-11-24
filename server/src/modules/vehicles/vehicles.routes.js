@@ -14,6 +14,9 @@ const A = (req) => ({ req, tenantId: req.tenant?.id, actorType: 'TENANT_USER', a
 
 // Residents see all of their own vehicles (any status). The estate ADMIN sees everything, optionally filtered.
 // Security and guards only ever see APPROVED vehicles, so a vehicle nobody has vetted can never be waved through.
+/** Where the vehicle is now, from its newest gate record: INSIDE | OUTSIDE | UNKNOWN (no record yet). ANPR cameras will write the same records. */
+const withPresence = (v) => { const last = (v.vehicleLogs || [])[0]; return { ...v, presence: !last ? 'UNKNOWN' : last.action === 'ENTRY' ? 'INSIDE' : 'OUTSIDE', presenceSince: last?.timestamp || null }; };
+
 router.get('/', authenticate, H.wrap(async (req, res) => {
   const where = { isActive: true };                 // vehicles of residents who moved out stay in the database (history/exports) but leave the gate lists
   if (req.user.role === 'RESIDENT') {
@@ -24,7 +27,8 @@ router.get('/', authenticate, H.wrap(async (req, res) => {
     if (req.query.status && req.query.status !== 'ALL') where.status = H.oneOf(req.query.status, ['PENDING', 'APPROVED', 'REJECTED'], 'status');
   } else if (['SECURITY_ADMIN', 'GUARD'].includes(req.user.role)) where.status = 'APPROVED';
   else throw H.forbidden();
-  res.json(await prisma.vehicle.findMany({ where, include: { ...ownerInclude, vehicleLogs: { orderBy: { timestamp: 'desc' }, take: 5 } }, orderBy: { createdAt: 'desc' }, take: 1000 }));
+  const list = await prisma.vehicle.findMany({ where, include: { ...ownerInclude, vehicleLogs: { orderBy: { timestamp: 'desc' }, take: 5 } }, orderBy: { createdAt: 'desc' }, take: 1000 });
+  res.json(list.map((v) => withPresence(v)));
 }));
 
 // RESIDENT => a request (PENDING). ADMIN => registered directly (APPROVED).

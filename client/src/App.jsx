@@ -22,7 +22,7 @@ import Maintenance from './pages/Maintenance';
 import Emergency from './pages/Emergency';
 import Communication from './pages/Communication';
 import Analytics from './pages/Analytics';
-import Advertisements from './pages/Advertisements';
+import AdBanner from './components/AdBanner';
 import Settings from './pages/Settings';
 import Subscription from './pages/Subscription';
 import Registrations from './pages/Registrations';
@@ -102,6 +102,7 @@ function AppLayout() {
       <PrepaidBanner />
       <main className="lg:ml-[var(--sidebar-width)] pt-[var(--header-height)]">
         <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+          <AdBanner />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/residents" element={<Residents />} />
@@ -117,7 +118,6 @@ function AppLayout() {
             <Route path="/emergency" element={<Emergency />} />
             <Route path="/communication" element={<Communication />} />
             <Route path="/analytics" element={<Analytics />} />
-            <Route path="/advertisements" element={<Advertisements />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="*" element={<Navigate to="/" replace />} />

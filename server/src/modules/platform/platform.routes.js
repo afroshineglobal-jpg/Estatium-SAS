@@ -25,6 +25,8 @@ router.use(platformAuth);
 router.get('/auth/me', (req, res) => res.json({ user: safe(req.platformUser), permissions: ROLE_PERMISSIONS[req.platformUser.role], allPermissions: PERMISSIONS }));
 router.post('/auth/password', wrap(changeOwnPassword));
 
+router.use('/ads', require('./ads.routes'));          // advertising: Platform owner only (ads:manage)
+
 // ── tenants ──────────────────────────────────────────────────────────────────
 router.get('/tenants', need('tenants:read'), wrap(async (req, res) => res.json(await T.listTenants({ q: req.query.q, status: req.query.status && oneOf(req.query.status, ['TRIAL', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'DELETED'], 'status'), page: req.query.page, pageSize: req.query.pageSize }))));
 

@@ -4,7 +4,7 @@ const PERMISSIONS = [
   'tenants:read', 'tenants:create', 'tenants:update', 'tenants:suspend', 'tenants:activate', 'tenants:delete',
   'subscriptions:read', 'subscriptions:update', 'invoices:read', 'invoices:manage',
   'plans:read', 'plans:manage', 'coupons:read', 'coupons:manage', 'currencies:read', 'currencies:manage',
-  'revenue:read', 'usage:read', 'audit:read', 'platform_users:manage',
+  'revenue:read', 'usage:read', 'audit:read', 'platform_users:manage', 'ads:manage',
 ];
 
 const ROLE_PERMISSIONS = {

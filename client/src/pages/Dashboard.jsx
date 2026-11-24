@@ -139,11 +139,18 @@ function ResidentDashboard() {
   const { user } = useAuth();
   const [bills, setBills] = useState([]);
   const [visitors, setVisitors] = useState([]);
+  const [parcels, setParcels] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
 
   useEffect(() => {
     api.get('/billing').then(setBills).catch(() => {});
     api.get('/visitors').then(setVisitors).catch(() => {});
+    api.get('/parcels').then((r) => setParcels(Array.isArray(r) ? r : [])).catch(() => {});
+    api.get('/vehicles').then((r) => setVehicles(Array.isArray(r) ? r : [])).catch(() => {});
   }, []);
+
+  const waiting = parcels.filter((p) => p.status === 'PENDING');
+  const myVehicles = vehicles.filter((v) => v.status === 'APPROVED');
 
   const unpaidBills = bills.filter(b => b.status === 'UNPAID');
   const recentVisitors = visitors.slice(0, 5);
@@ -159,6 +166,28 @@ function ResidentDashboard() {
       <div className="grid grid-cols-2 gap-4">
         <StatCard icon={CreditCard} label="Unpaid Bills" value={unpaidBills.length} color={unpaidBills.length > 0 ? 'red' : 'estate'} />
         <StatCard icon={UserCheck} label="Recent Visitors" value={recentVisitors.length} color="blue" />
+      </div>
+      <div className={`card p-4 ${waiting.length ? 'border-amber-700/60' : ''}`}>
+        <p className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Package size={16} className={waiting.length ? 'text-amber-400' : 'text-slate-500'} /> Parcels at the gate</p>
+        {waiting.length === 0 ? <p className="text-sm text-slate-500 mt-2">No parcel is waiting for you.</p> : (
+          <div className="mt-2 space-y-1.5">
+            <p className="text-sm text-amber-300 font-medium">{waiting.length === 1 ? '1 parcel is waiting at the gate' : `${waiting.length} parcels are waiting at the gate`}. Collect with your OTP.</p>
+            {waiting.slice(0, 5).map((p) => <p key={p.id} className="text-xs text-slate-400">From {p.senderName || p.carrier || 'unknown sender'} · arrived {new Date(p.loggedAt).toLocaleString()}</p>)}
+          </div>
+        )}
+      </div>
+      <div className="card p-4">
+        <p className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Car size={16} className="text-slate-500" /> My vehicles</p>
+        {myVehicles.length === 0 ? <p className="text-sm text-slate-500 mt-2">No approved vehicle yet.</p> : (
+          <div className="mt-2 divide-y divide-slate-800/50">
+            {myVehicles.map((v) => (
+              <div key={v.id} className="flex items-center justify-between py-2">
+                <div><span className="font-mono font-bold text-estate-300">{v.plateNumber}</span><span className="text-xs text-slate-500 ml-2">{[v.make, v.model, v.color].filter(Boolean).join(' ')}</span></div>
+                <span className={`badge ${v.presence === 'INSIDE' ? 'badge-green' : v.presence === 'OUTSIDE' ? 'badge-gray' : 'badge-blue'}`} title={v.presenceSince ? `Since ${new Date(v.presenceSince).toLocaleString()}` : 'No gate record yet'}>{v.presence === 'INSIDE' ? 'In estate' : v.presence === 'OUTSIDE' ? 'Out' : 'No gate record'}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {unpaidBills.length > 0 && (
         <div className="card p-4 border-amber-800/40">

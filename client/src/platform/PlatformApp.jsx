@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Routes, Route, Navigate, Link, useNavigate, useParams } from 'react-router-dom';
-import { Shield, Building2, Receipt, Layers, Activity, LogOut } from 'lucide-react';
+import { Shield, Building2, Receipt, Layers, Activity, LogOut, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { platformApi as api, PLATFORM_TOKEN_KEY } from '../utils/api';
 import { fmt } from '../utils/money';
@@ -37,7 +37,7 @@ export function PlatformLogin() {
 
 function Shell({ me, children }) {
   const nav = useNavigate();
-  const links = [['/platform', Activity, 'Overview'], ['/platform/tenants', Building2, 'Estates'], ['/platform/invoices', Receipt, 'Invoices'], ['/platform/plans', Layers, 'Plans & pricing'], ['/platform/audit', Shield, 'Audit log']];
+  const links = [['/platform', Activity, 'Overview'], ['/platform/tenants', Building2, 'Estates'], ['/platform/invoices', Receipt, 'Invoices'], ['/platform/plans', Layers, 'Plans & pricing'], ['/platform/ads', Megaphone, 'Ads & banners'], ['/platform/audit', Shield, 'Audit log']];
   return (
     <div className="min-h-screen bg-surface-900 text-slate-200">
       <header className="border-b border-slate-800 px-4 py-3 flex items-center gap-6 flex-wrap">
@@ -286,6 +286,58 @@ function Plans({ me }) {
     <div className="card p-4"><h3 className="font-semibold mb-2">Coupons</h3>{coupons.length === 0 && <p className="text-sm text-slate-500">None</p>}{coupons.map((c) => <div key={c.id} className="text-sm py-1 flex gap-3"><b className="font-mono">{c.code}</b><span>{c.type === 'PERCENT' ? `${c.percentOff}% off` : `${fmt(c.amountOff, c.currency)} off`}</span><span className="text-slate-500">{c.duration} · used {c.timesRedeemed}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''}</span></div>)}</div></div>);
 }
 
+// Shrinks a chosen picture to a web banner (max 1200px wide, JPEG) and returns it as a data URI.
+function pictureToDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(); const r = new FileReader();
+    r.onerror = () => reject(new Error('Could not read the file'));
+    r.onload = () => { img.onerror = () => reject(new Error('That file is not a picture')); img.onload = () => {
+      const w = Math.min(1200, img.width); const h = Math.round(img.height * (w / img.width));
+      const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', 0.8)); }; img.src = r.result; };
+    r.readAsDataURL(file);
+  });
+}
+
+function Ads({ me }) {
+  const [ads, setAds] = useState(null); const [tenants, setTenants] = useState([]);
+  const blank = { tenantId: 'ALL', title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
+  const [f, setF] = useState(blank); const [busy, setBusy] = useState(false);
+  const load = () => api.get('/ads').then(setAds).catch(() => setAds([]));
+  useEffect(() => { load(); api.get('/tenants').then((d) => setTenants((d.items || d || []).filter((t) => ['TRIAL', 'ACTIVE'].includes(t.status)))).catch(() => {}); }, []);
+  if (!can(me, 'ads:manage')) return <p className="text-slate-400">Only the platform owner can manage ads.</p>;
+  const pick = async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setF({ ...f, imageUrl: await pictureToDataUri(file) }); } catch (x) { toast.error(x.message); } };
+  const create = async () => {
+    if (!f.title || !f.endDate) return toast.error('Title and end date are required');
+    setBusy(true);
+    try { const r = await api.post('/ads', { ...f, linkUrl: f.linkUrl || undefined, imageUrl: f.imageUrl || undefined }); toast.success(`Ad published to ${r.created} estate${r.created === 1 ? '' : 's'}`); setF(blank); load(); }
+    catch { /* toast */ } finally { setBusy(false); }
+  };
+  const stop = async (a) => { if (!confirm(`Stop "${a.title}" for ${a.tenantName}?`)) return; try { await api.post(`/ads/${a.id}/stop`, { tenantId: a.tenantId }); load(); } catch { /* toast */ } };
+  const del = async (a) => { if (!confirm(`Delete "${a.title}" for ${a.tenantName}? Its view and click counts are lost.`)) return; try { await api.delete(`/ads/${a.id}?tenantId=${a.tenantId}`); load(); } catch { /* toast */ } };
+  const state = (a) => { const now = new Date(); if (a.status !== 'APPROVED' || !a.isActive) return ['Stopped', 'badge-gray']; if (new Date(a.startDate) > now) return ['Scheduled', 'badge-blue']; if (new Date(a.endDate) < now) return ['Ended', 'badge-gray']; return ['Live', 'badge-green']; };
+  return (<div className="space-y-5"><div><h1 className="page-title">Ads & banners</h1><p className="text-sm text-slate-500">Only you can create ads. They show as a banner at the top of every page for everyone in the estate.</p></div>
+    <div className="card p-4 space-y-3"><h3 className="font-semibold">New banner</h3>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><label className="label">Show in</label><select className="input" value={f.tenantId} onChange={(e) => setF({ ...f, tenantId: e.target.value })}><option value="ALL">All live estates</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+        <div><label className="label">Title *</label><input className="input" maxLength={160} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
+        <div className="sm:col-span-2"><label className="label">Text (optional if you add a picture)</label><textarea className="input" rows={2} maxLength={2000} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} /></div>
+        <div><label className="label">Advertiser name</label><input className="input" maxLength={120} value={f.advertiserName} onChange={(e) => setF({ ...f, advertiserName: e.target.value })} /></div>
+        <div><label className="label">Link when tapped (https://…)</label><input className="input" value={f.linkUrl} onChange={(e) => setF({ ...f, linkUrl: e.target.value })} placeholder="https://" /></div>
+        <div><label className="label">Starts</label><input type="date" className="input" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></div>
+        <div><label className="label">Ends *</label><input type="date" className="input" value={f.endDate} onChange={(e) => setF({ ...f, endDate: e.target.value })} /></div>
+        <div className="sm:col-span-2"><label className="label">Banner picture (wide image works best)</label><input type="file" accept="image/*" onChange={pick} className="text-sm" />
+          {f.imageUrl && <div className="mt-2"><img src={f.imageUrl} alt="preview" className="max-h-32 rounded-lg border border-slate-700" /><button className="btn-ghost text-xs text-red-400" onClick={() => setF({ ...f, imageUrl: '' })}>Remove picture</button></div>}</div>
+      </div>
+      <button className="btn-primary" disabled={busy} onClick={create}>{busy ? 'Publishing…' : 'Publish banner'}</button></div>
+    <div className="table-container"><table className="table"><thead><tr><th>Banner</th><th>Estate</th><th>Runs</th><th>Status</th><th>Views</th><th>Taps</th><th /></tr></thead><tbody>
+      {!ads ? <tr><td colSpan={7} className="text-center py-8 text-slate-500">Loading…</td></tr> : ads.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-slate-500">No ads yet</td></tr> : ads.map((a) => { const [label, cls] = state(a); return (
+        <tr key={a.tenantId + a.id}><td><p className="font-medium text-slate-200">{a.title}</p><p className="text-xs text-slate-500">{a.advertiserName}{a.imageUrl ? ' · picture' : ''}</p></td><td className="text-sm">{a.tenantName}</td>
+          <td className="text-xs text-slate-400 whitespace-nowrap">{day(a.startDate)} – {day(a.endDate)}</td><td><span className={`badge ${cls}`}>{label}</span></td><td>{a.impressions}</td><td>{a.clicks}</td>
+          <td className="whitespace-nowrap">{label === 'Live' || label === 'Scheduled' ? <button className="btn-ghost text-xs text-amber-400" onClick={() => stop(a)}>Stop</button> : null}<button className="btn-ghost text-xs text-red-400" onClick={() => del(a)}>Delete</button></td></tr>); })}
+    </tbody></table></div></div>);
+}
+
 function Audit() {
   const [d, setD] = useState(null);
   useEffect(() => { api.get('/audit-logs?pageSize=100').then(setD).catch(() => {}); }, []);
@@ -305,6 +357,7 @@ export default function PlatformApp() {
         <Route path="/tenants/:id" element={<TenantDetail me={me} />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/plans" element={<Plans me={me} />} />
+        <Route path="/ads" element={<Ads me={me} />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="*" element={<Navigate to="/platform" replace />} />
       </Routes>
