@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import axios from 'axios';
+import CameraCapture from '../components/CameraCapture';
 import { Shield, Camera, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 const http = axios.create({ baseURL: '/api/public', timeout: 20000 });
@@ -51,7 +52,7 @@ export default function Register() {
   const [info, setInfo] = useState(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(() => { try { return localStorage.getItem(STORE + (codeParam || '')) || ''; } catch { return ''; } });
   const [f, setF] = useState({ name: '', email: '', phone: '', residentType: 'TENANT', unitId: '', password: '', password2: '', consent: false, website: '' });
-  const [selfie, setSelfie] = useState(''); const fileRef = useRef();
+  const [selfie, setSelfie] = useState(''); const [cam, setCam] = useState(false); const fileRef = useRef();
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
   const lookup = async (c) => {
@@ -95,8 +96,10 @@ export default function Register() {
         <select className="input w-full" value={f.residentType} onChange={set('residentType')}><option value="TENANT">I rent this unit</option><option value="OWNER">I own this unit</option></select>
         <input className="input w-full" type="password" placeholder="Choose a password" value={f.password} onChange={set('password')} required minLength={8} autoComplete="new-password" />
         <input className="input w-full" type="password" placeholder="Repeat password" value={f.password2} onChange={set('password2')} required autoComplete="new-password" />
-        <div><input ref={fileRef} type="file" accept="image/*" capture="user" className="hidden" onChange={pick} />
-          <button type="button" className="btn-secondary w-full flex items-center justify-center gap-2" onClick={() => fileRef.current.click()}><Camera className="w-4 h-4" />{selfie ? 'Retake photo' : 'Take a photo of yourself'}</button>
+        <div><input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} />
+          <button type="button" className="btn-secondary w-full flex items-center justify-center gap-2" onClick={() => setCam(true)}><Camera className="w-4 h-4" />{selfie ? 'Retake photo' : 'Take a photo of yourself'}</button>
+          <button type="button" className="text-xs text-slate-400 underline mt-1 block mx-auto" onClick={() => fileRef.current.click()}>or upload a photo from this device</button>
+          {cam && <CameraCapture onCapture={(d) => { setSelfie(d); setErr(''); setCam(false); }} onClose={() => setCam(false)} onFallback={() => { setCam(false); fileRef.current.click(); }} />}
           {selfie && <img src={selfie} alt="Your photo" className="mt-2 mx-auto w-28 h-28 object-cover rounded-xl" />}</div>
         <input className="hidden" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} aria-hidden="true" />
         <label className="flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={f.consent} onChange={set('consent')} className="mt-0.5" />

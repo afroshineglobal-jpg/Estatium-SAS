@@ -135,9 +135,11 @@ async function updateSettings(req, { enabled, regenerate }) {
 
 async function list(status) {
   const prisma = require('../../config/prisma');
-  const where = status ? { status: H.oneOf(status, ['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO'], 'status') } : {};
+  const where = status && status !== 'ALL' ? { status: H.oneOf(status, ['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO'], 'status') } : {};
   const rows = await prisma.registrationRequest.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200, include: { unit: { include: { block: true } } } });
-  return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, phone: r.phone, residentType: r.residentType, unit: r.unit ? `${r.unit.block.name} - ${r.unit.unitNumber}` : null, status: r.status, reviewNote: r.reviewNote, hasSelfie: !!r.selfiePath, createdAt: r.createdAt, reviewedAt: r.reviewedAt }));
+  const ids = [...new Set(rows.map((r) => r.reviewedById).filter(Boolean))];
+  const names = new Map((ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  return rows.map((r) => ({ reviewedBy: names.get(r.reviewedById) || null, id: r.id, name: r.name, email: r.email, phone: r.phone, residentType: r.residentType, unit: r.unit ? `${r.unit.block.name} - ${r.unit.unitNumber}` : null, status: r.status, reviewNote: r.reviewNote, hasSelfie: !!r.selfiePath, createdAt: r.createdAt, reviewedAt: r.reviewedAt }));
 }
 
 async function selfieFile(id) {
