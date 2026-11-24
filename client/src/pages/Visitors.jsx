@@ -194,7 +194,7 @@ function ExitCodeModal({ visitor, onClose }) {
 
           {/* Exit code prominently */}
           <div className="card p-4 border-amber-800/50">
-            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">5-Digit Exit Code</p>
+            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">6-Digit Exit Code</p>
             <p className="text-4xl font-mono font-bold text-amber-300 tracking-[0.4em]">{visitor.exitCode}</p>
           </div>
 
@@ -352,7 +352,7 @@ function VerifyCodeModal({ mode, onClose, onDone }) {
   const isEntry = mode === 'entry';
 
   const verify = async () => {
-    if (code.length !== 5) return toast.error('Enter the full 5-digit code');
+    if (code.length !== 6) return toast.error('Enter the full 6-digit code');
     setLoading(true);
     try {
       const endpoint = isEntry ? '/visitors/verify-code' : '/visitors/verify-exit-code';
@@ -385,26 +385,26 @@ function VerifyCodeModal({ mode, onClose, onDone }) {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-slate-100">Verify {isEntry ? 'Entry' : 'Exit'} Code</h3>
-            <p className="text-slate-400 text-xs">Enter 5-digit code given by resident</p>
+            <p className="text-slate-400 text-xs">Enter 6-digit code given by resident</p>
           </div>
         </div>
 
         {!visitor ? (
           <>
-            <label className="label text-center block mb-2">5-Digit {isEntry ? 'Entry' : 'Exit'} Code</label>
+            <label className="label text-center block mb-2">6-Digit {isEntry ? 'Entry' : 'Exit'} Code</label>
             <input
               className="input text-center text-4xl font-mono tracking-[0.5em] py-5 mb-4"
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="· · · · ·"
-              maxLength={5}
+              maxLength={6}
               autoFocus
               onKeyDown={e => e.key === 'Enter' && code.length === 5 && verify()}
             />
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
               <button className={`flex-1 justify-center ${isEntry ? 'btn-primary' : 'btn-secondary border-amber-700/50 text-amber-300 bg-amber-900/20 hover:bg-amber-900/40'}`}
-                onClick={verify} disabled={loading || code.length !== 5}>
+                onClick={verify} disabled={loading || code.length !== 6}>
                 {loading ? 'Checking...' : <><ScanLine size={16} /> Verify Code</>}
               </button>
             </div>
