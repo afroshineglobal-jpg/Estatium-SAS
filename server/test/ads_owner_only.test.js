@@ -24,3 +24,9 @@ test('every platform ad route is permission-checked', () => {
   const guarded = src.match(/router\.(get|post|put|delete)\('[^']*', need\('ads:manage'\)/g) || [];
   assert.equal(routes.length, guarded.length); assert.ok(routes.length >= 4);
 });
+
+test('migration 010 only adds the nullable pages column, idempotently', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '../sql/010_ads_pages.sql'), 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "pages" TEXT;/);
+  assert.doesNotMatch(sql, /DROP|TRUNCATE|NOT NULL/i);
+});

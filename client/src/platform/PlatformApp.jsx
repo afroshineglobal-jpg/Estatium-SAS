@@ -301,12 +301,21 @@ function pictureToDataUri(file) {
 
 function Ads({ me }) {
   const [ads, setAds] = useState(null); const [tenants, setTenants] = useState([]);
-  const blank = { tenantId: 'ALL', title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
+  const blank = { tenantId: 'ALL', placement: 'TOP', pages: [], title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
   const [f, setF] = useState(blank); const [busy, setBusy] = useState(false);
   const load = () => api.get('/ads').then(setAds).catch(() => setAds([]));
   useEffect(() => { load(); api.get('/tenants').then((d) => setTenants((d.items || d || []).filter((t) => ['TRIAL', 'ACTIVE'].includes(t.status)))).catch(() => {}); }, []);
   if (!can(me, 'ads:manage')) return <p className="text-slate-400">Only the platform owner can manage ads.</p>;
-  const pick = async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setF({ ...f, imageUrl: await pictureToDataUri(file) }); } catch (x) { toast.error(x.message); } };
+  const PAGE_LIST = [['/', 'Dashboard'], ['/visitors', 'Visitors'], ['/parcels', 'Parcels'], ['/vehicles', 'Vehicles'], ['/billing', 'Billing'], ['/communication', 'Communication'], ['/maintenance', 'Maintenance'], ['/amenities', 'Amenities'], ['/emergency', 'Emergency'], ['/residents', 'Residents'], ['/staff', 'Staff'], ['/analytics', 'Analytics'], ['/subscription', 'Subscription'], ['/settings', 'Settings']];
+  const togglePage = (p) => setF({ ...f, pages: f.pages.includes(p) ? f.pages.filter((x) => x !== p) : [...f.pages, p] });
+  const readAsUri = (file) => new Promise((ok, no) => { const r = new FileReader(); r.onerror = () => no(new Error('Could not read the file')); r.onload = () => ok(r.result); r.readAsDataURL(file); });
+  const pick = async (e) => { const file = e.target.files?.[0]; if (!file) return;
+    try {
+      if (file.type === 'image/gif') {        // keep GIFs untouched so they stay animated
+        if (file.size > 450 * 1024) return toast.error('This GIF is larger than 450 KB. Shrink it first (for example at ezgif.com: resize to ~800px wide, fewer frames).');
+        setF({ ...f, imageUrl: await readAsUri(file) });
+      } else setF({ ...f, imageUrl: await pictureToDataUri(file) });
+    } catch (x) { toast.error(x.message); } };
   const create = async () => {
     if (!f.title || !f.endDate) return toast.error('Title and end date are required');
     setBusy(true);
@@ -320,19 +329,21 @@ function Ads({ me }) {
     <div className="card p-4 space-y-3"><h3 className="font-semibold">New banner</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         <div><label className="label">Show in</label><select className="input" value={f.tenantId} onChange={(e) => setF({ ...f, tenantId: e.target.value })}><option value="ALL">All live estates</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+        <div><label className="label">Position</label><select className="input" value={f.placement} onChange={(e) => setF({ ...f, placement: e.target.value })}><option value="TOP">Top of the page</option><option value="BOTTOM">Bottom of the page (several rotate)</option></select></div>
         <div><label className="label">Title *</label><input className="input" maxLength={160} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
         <div className="sm:col-span-2"><label className="label">Text (optional if you add a picture)</label><textarea className="input" rows={2} maxLength={2000} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} /></div>
         <div><label className="label">Advertiser name</label><input className="input" maxLength={120} value={f.advertiserName} onChange={(e) => setF({ ...f, advertiserName: e.target.value })} /></div>
         <div><label className="label">Link when tapped (https://…)</label><input className="input" value={f.linkUrl} onChange={(e) => setF({ ...f, linkUrl: e.target.value })} placeholder="https://" /></div>
         <div><label className="label">Starts</label><input type="date" className="input" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></div>
         <div><label className="label">Ends *</label><input type="date" className="input" value={f.endDate} onChange={(e) => setF({ ...f, endDate: e.target.value })} /></div>
-        <div className="sm:col-span-2"><label className="label">Banner picture (wide image works best)</label><input type="file" accept="image/*" onChange={pick} className="text-sm" />
+        <div className="sm:col-span-2"><label className="label">Pages (leave all unticked = every page)</label><div className="flex flex-wrap gap-x-4 gap-y-1">{PAGE_LIST.map(([p, n]) => <label key={p} className="text-sm text-slate-300 flex items-center gap-1.5"><input type="checkbox" checked={f.pages.includes(p)} onChange={() => togglePage(p)} />{n}</label>)}</div></div>
+        <div className="sm:col-span-2"><label className="label">Banner picture: JPG, PNG or animated GIF (GIF up to 450 KB; wide image works best)</label><input type="file" accept="image/*" onChange={pick} className="text-sm" />
           {f.imageUrl && <div className="mt-2"><img src={f.imageUrl} alt="preview" className="max-h-32 rounded-lg border border-slate-700" /><button className="btn-ghost text-xs text-red-400" onClick={() => setF({ ...f, imageUrl: '' })}>Remove picture</button></div>}</div>
       </div>
       <button className="btn-primary" disabled={busy} onClick={create}>{busy ? 'Publishing…' : 'Publish banner'}</button></div>
-    <div className="table-container"><table className="table"><thead><tr><th>Banner</th><th>Estate</th><th>Runs</th><th>Status</th><th>Views</th><th>Taps</th><th /></tr></thead><tbody>
-      {!ads ? <tr><td colSpan={7} className="text-center py-8 text-slate-500">Loading…</td></tr> : ads.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-slate-500">No ads yet</td></tr> : ads.map((a) => { const [label, cls] = state(a); return (
-        <tr key={a.tenantId + a.id}><td><p className="font-medium text-slate-200">{a.title}</p><p className="text-xs text-slate-500">{a.advertiserName}{a.imageUrl ? ' · picture' : ''}</p></td><td className="text-sm">{a.tenantName}</td>
+    <div className="table-container"><table className="table"><thead><tr><th>Banner</th><th>Where</th><th>Estate</th><th>Runs</th><th>Status</th><th>Views</th><th>Taps</th><th /></tr></thead><tbody>
+      {!ads ? <tr><td colSpan={8} className="text-center py-8 text-slate-500">Loading…</td></tr> : ads.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-slate-500">No ads yet</td></tr> : ads.map((a) => { const [label, cls] = state(a); return (
+        <tr key={a.tenantId + a.id}><td><p className="font-medium text-slate-200">{a.title}</p><p className="text-xs text-slate-500">{a.advertiserName}{a.imageUrl ? ' · picture' : ''}</p></td><td className="text-xs text-slate-400">{a.placement === 'BOTTOM' ? 'Bottom' : 'Top'} · {a.pages ? a.pages.split(',').map((p) => (PAGE_LIST.find((x) => x[0] === p) || [p, p])[1]).join(', ') : 'All pages'}</td><td className="text-sm">{a.tenantName}</td>
           <td className="text-xs text-slate-400 whitespace-nowrap">{day(a.startDate)} – {day(a.endDate)}</td><td><span className={`badge ${cls}`}>{label}</span></td><td>{a.impressions}</td><td>{a.clicks}</td>
           <td className="whitespace-nowrap">{label === 'Live' || label === 'Scheduled' ? <button className="btn-ghost text-xs text-amber-400" onClick={() => stop(a)}>Stop</button> : null}<button className="btn-ghost text-xs text-red-400" onClick={() => del(a)}>Delete</button></td></tr>); })}
     </tbody></table></div></div>);

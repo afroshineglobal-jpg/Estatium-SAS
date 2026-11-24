@@ -1050,7 +1050,8 @@ model Advertisement {
   linkUrl        String?
   advertiserName String?
   type           String   @default("BANNER")
-  placement      String   @default("HOME")
+  placement      String   @default("HOME")     // TOP | BOTTOM (HOME = legacy, shown at the top)
+  pages          String?                       // NULL = every page, else comma-separated app paths
   targetRole     UserRole?
   startDate      DateTime
   endDate        DateTime

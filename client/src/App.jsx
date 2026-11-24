@@ -102,7 +102,7 @@ function AppLayout() {
       <PrepaidBanner />
       <main className="lg:ml-[var(--sidebar-width)] pt-[var(--header-height)]">
         <div className="p-4 lg:p-6 max-w-7xl mx-auto">
-          <AdBanner />
+          <AdBanner position="TOP" />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/residents" element={<Residents />} />
@@ -122,6 +122,7 @@ function AppLayout() {
             <Route path="/subscription" element={<Subscription />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <AdBanner position="BOTTOM" />
         </div>
       </main>
     </div>

@@ -12,7 +12,7 @@ const H = require('../../utils/http');
 router.get('/', authenticate, H.wrap(async (req, res) => {
   const now = new Date();
   const where = { isActive: true, status: 'APPROVED', startDate: { lte: now }, endDate: { gte: now }, OR: [{ targetRole: null }, { targetRole: req.user.role }] };
-  if (req.query.placement) where.placement = H.str(req.query.placement, { max: 20 });
+  if (req.query.placement) { const p = H.oneOf(req.query.placement, ['TOP', 'BOTTOM'], 'placement'); where.placement = p === 'TOP' ? { in: ['TOP', 'HOME'] } : 'BOTTOM'; }
   res.json(await prisma.advertisement.findMany({ where, orderBy: { createdAt: 'desc' }, take: 20 }));
 }));
 
