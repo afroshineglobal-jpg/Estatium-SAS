@@ -9,7 +9,7 @@ test('estate users cannot create or change ads; only count views and taps', () =
   const src = fs.readFileSync(path.join(__dirname, '../src/modules/advertisements/advertisements.routes.js'), 'utf8');
   assert.doesNotMatch(src, /router\.(put|patch|delete)\(/);
   assert.doesNotMatch(src, /router\.post\('\/'/);
-  assert.match(src, /router\.get\('\/'/);
+  assert.match(src, /router\.get\('\/'/); assert.match(src, /role !== 'RESIDENT'/);
   assert.match(src, /'\/:id\/impression'/); assert.match(src, /'\/:id\/click'/);
 });
 

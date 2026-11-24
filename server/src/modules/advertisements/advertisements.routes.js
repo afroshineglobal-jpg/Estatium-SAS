@@ -10,6 +10,7 @@ const { publicLimiter } = require('../../middleware/security');
 const H = require('../../utils/http');
 
 router.get('/', authenticate, H.wrap(async (req, res) => {
+  if (req.user.role !== 'RESIDENT') return res.json([]);          // banners are for residents only
   const now = new Date();
   const where = { isActive: true, status: 'APPROVED', startDate: { lte: now }, endDate: { gte: now }, OR: [{ targetRole: null }, { targetRole: req.user.role }] };
   if (req.query.placement) { const p = H.oneOf(req.query.placement, ['TOP', 'BOTTOM'], 'placement'); where.placement = p === 'TOP' ? { in: ['TOP', 'HOME'] } : 'BOTTOM'; }
