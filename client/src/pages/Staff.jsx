@@ -4,12 +4,14 @@ import { Plus, Briefcase } from 'lucide-react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
+import TempPasswordModal from '../components/TempPasswordModal';
 
 export function Staff() {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [qrStaff, setQrStaff] = useState(null);
+  const [shown, setShown] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', phone: '', staffType: 'GUARD', accessStart: '07:00', accessEnd: '18:00' });
 
   const load = async () => {
@@ -22,16 +24,23 @@ export function Staff() {
   const addStaff = async () => {
     if (!form.name || !form.email) return toast.error('Name and email required');
     try {
-      await api.post('/staff', form);
-      toast.success('Staff member added. Default password: Staff@123');
+      const r = await api.post('/staff', { ...form, password: form.password || undefined });
+      toast.success('Staff member added');
+      if (r.temporaryPassword) setShown({ email: form.email, password: r.temporaryPassword });
       setModal(false);
       setForm({ name: '', email: '', phone: '', staffType: 'GUARD', accessStart: '07:00', accessEnd: '18:00' });
       load();
     } catch {}
   };
 
+  const resetPw = async (s) => {
+    if (!window.confirm(`Reset the password for ${s.user?.name}? They will be signed out everywhere.`)) return;
+    try { const r = await api.post(`/staff/${s.id}/reset-password`); setShown({ email: r.email, password: r.temporaryPassword }); } catch {}
+  };
+
   return (
     <div className="space-y-5 animate-fade-in">
+      {shown && <TempPasswordModal {...shown} onClose={() => setShown(null)} />}
       <div className="page-header">
         <div><h1 className="page-title">Staff Management</h1><p className="text-slate-500 text-sm">{staff.length} staff members</p></div>
         <button className="btn-primary" onClick={() => setModal(true)}><Plus size={16} /> Add Staff</button>
@@ -52,6 +61,7 @@ export function Staff() {
             <div className="flex flex-col gap-1">
               <span className={`badge text-xs ${s.user?.isActive ? 'badge-green' : 'badge-red'}`}>{s.user?.isActive ? 'Active' : 'Inactive'}</span>
               <button className="btn-ghost text-xs text-estate-400" onClick={() => setQrStaff(s)}>QR</button>
+              <button className="btn-ghost text-xs text-amber-400" onClick={() => resetPw(s)}>Reset password</button>
             </div>
           </div>
         ))}
@@ -65,6 +75,7 @@ export function Staff() {
               <div><label className="label">Full Name *</label><input className="input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
               <div><label className="label">Email *</label><input className="input" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
               <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
+              <div><label className="label">Password (optional)</label><input className="input" type="text" value={form.password || ''} onChange={e => setForm({...form, password: e.target.value})} placeholder="Leave blank to generate a temporary one" /></div>
               <div><label className="label">Staff Type</label>
                 <select className="select" value={form.staffType} onChange={e => setForm({...form, staffType: e.target.value})}>
                   {['GUARD', 'CLEANER', 'ELECTRICIAN', 'PLUMBER', 'GARDENER', 'OTHER'].map(t => <option key={t}>{t}</option>)}

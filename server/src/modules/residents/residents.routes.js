@@ -63,6 +63,13 @@ router.post('/', authenticate, authorize(...ADMIN_ROLES), H.wrap(async (req, res
 }));
 
 // Bulk import from CSV (estate ADMIN only). "check" writes nothing; "run" creates each valid row on its own.
+// Estate admin resets a resident's password (shown once, must be changed at next sign-in).
+router.post('/:id/reset-password', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => {
+  const r = await prisma.resident.findFirst({ where: { id: H.requireId(req.params.id) }, select: { id: true, userId: true } });
+  if (!r) throw H.notFound('Resident');
+  res.json(await require('../../utils/credentials').adminResetPassword({ req, userId: r.userId, allowedRoles: ['RESIDENT'], entity: 'Resident', entityId: r.id }));
+}));
+
 router.post('/import/check', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.json(await importer.check(req.body?.csv, { createMissing: req.body?.createMissing === true }))));
 router.post('/import', authenticate, authorize('ADMIN'), H.wrap(async (req, res) => res.status(201).json(await importer.run(req.body?.csv, { createMissing: req.body?.createMissing === true }, req))));
 

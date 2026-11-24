@@ -3,20 +3,25 @@ import { Plus, Search, Users, Home, Phone, Mail, Trash2, Edit, UserPlus } from '
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import ImportResidentsModal from '../components/ImportResidentsModal';
+import TempPasswordModal from '../components/TempPasswordModal';
 
 function AddResidentModal({ onClose, onDone, units }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', unitId: '', residentType: 'TENANT' });
   const [loading, setLoading] = useState(false);
+  const [shown, setShown] = useState(null);
 
   const submit = async () => {
     if (!form.name || !form.email || !form.unitId) return toast.error('Name, email, and unit required');
     setLoading(true);
     try {
-      await api.post('/residents', form);
+      const r = await api.post('/residents', { ...form, password: form.password || undefined });
       toast.success('Resident added successfully');
-      onDone(); onClose();
+      onDone();
+      if (r.temporaryPassword) setShown({ email: form.email, password: r.temporaryPassword }); else onClose();
     } catch {} finally { setLoading(false); }
   };
+
+  if (shown) return <TempPasswordModal {...shown} onClose={onClose} />;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -26,7 +31,7 @@ function AddResidentModal({ onClose, onDone, units }) {
           <div><label className="label">Full Name *</label><input className="input" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Chidi Okeke" /></div>
           <div><label className="label">Email *</label><input type="email" className="input" value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="resident@email.com" /></div>
           <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+2348..." /></div>
-          <div><label className="label">Password (default: Resident@123)</label><input className="input" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="Leave blank for default" /></div>
+          <div><label className="label">Password (optional)</label><input className="input" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="Leave blank to generate a temporary one" /></div>
           <div>
             <label className="label">Unit *</label>
             <select className="select" value={form.unitId} onChange={e => setForm({...form, unitId: e.target.value})}>
@@ -132,6 +137,11 @@ function ManageUnitsModal({ block, units, onClose, onDone }) {
 function ResidentDetail({ resident, onClose }) {
   const [newMember, setNewMember] = useState({ name: '', relation: '', phone: '' });
   const [addingMember, setAddingMember] = useState(false);
+  const [shown, setShown] = useState(null);
+  const resetPw = async () => {
+    if (!window.confirm(`Reset the password for ${resident.user?.name}? They will be signed out everywhere.`)) return;
+    try { const r = await api.post(`/residents/${resident.id}/reset-password`); setShown({ email: r.email, password: r.temporaryPassword }); } catch {}
+  };
 
   const addMember = async () => {
     if (!newMember.name || !newMember.relation) return toast.error('Name and relation required');
@@ -145,9 +155,11 @@ function ResidentDetail({ resident, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
+      {shown && <TempPasswordModal {...shown} onClose={() => setShown(null)} />}
       <div className="modal p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-semibold text-slate-100">{resident.user?.name}</h3>
+          <button className="btn-ghost text-xs text-amber-400 ml-auto mr-3" onClick={resetPw}>Reset password</button>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl">✕</button>
         </div>
 

@@ -36,6 +36,13 @@ router.post('/', authenticate, authorize('ADMIN', 'SECURITY_ADMIN'), H.wrap(asyn
   res.status(201).json({ ...safe.staffMember, user: safe, ...(b.password ? {} : { temporaryPassword: pw }) });
 }));
 
+// Admin / security admin resets a guard's or staff member's password (shown once, must be changed at next sign-in).
+router.post('/:id/reset-password', authenticate, authorize('ADMIN', 'SECURITY_ADMIN'), H.wrap(async (req, res) => {
+  const s = await prisma.staffMember.findFirst({ where: { id: H.requireId(req.params.id) }, select: { id: true, userId: true } });
+  if (!s) throw H.notFound('Staff member');
+  res.json(await require('../../utils/credentials').adminResetPassword({ req, userId: s.userId, allowedRoles: ['GUARD', 'STAFF'], entity: 'StaffMember', entityId: s.id }));
+}));
+
 router.post('/:id/tasks', authenticate, authorize('ADMIN', 'MAINTENANCE_MANAGER'), H.wrap(async (req, res) => {
   const staffId = H.requireId(req.params.id);
   if (!(await prisma.staffMember.findFirst({ where: { id: staffId } }))) throw H.notFound('Staff member');
