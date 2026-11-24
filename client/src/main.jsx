@@ -7,6 +7,15 @@ import { messaging } from './firebase';
 import { getToken, onMessage } from 'firebase/messaging';
 import { registerSW } from 'virtual:pwa-register';
 
+// The platform console (/platform) installs as its own app (own name, scope and start page).
+if (window.location.pathname.startsWith('/platform')) {
+  document.querySelector('link[rel="manifest"]')?.setAttribute('href', '/platform-manifest.json');
+  document.title = 'Estatium Platform';
+}
+// Keep the browser's "install" offer so the app can show its own Install button.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__installPrompt = e; window.dispatchEvent(new Event('app-installable')); });
+window.addEventListener('appinstalled', () => { window.__installPrompt = null; window.dispatchEvent(new Event('app-installed')); });
+
 // Tell the app when a new version is waiting; check for one on load and then every hour.
 const updateSW = registerSW({
   onNeedRefresh() { window.__updateSW = updateSW; window.dispatchEvent(new Event('app-update-ready')); },
