@@ -28,7 +28,8 @@ async function runOnce(now = new Date()) {
     if (!locked) return { skipped: 'another instance holds the lock' };
     const billing = await B.runBillingCycle(now);
     const overdueBills = await markOverdueBills(now);
-    return { billing, overdueBills };
+    let selfiesPurged = 0; try { selfiesPurged = await require('../modules/registration/registration.service').purgeSelfies(now); } catch (e) { console.error('[jobs] selfie purge failed:', e.message); }
+    return { billing, overdueBills, selfiesPurged };
   }, { timeout: 10 * 60 * 1000, maxWait: 10000 });
 }
 

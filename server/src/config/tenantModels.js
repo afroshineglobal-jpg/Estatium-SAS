@@ -5,5 +5,5 @@ module.exports = new Set([
   'User', 'Block', 'Unit', 'Resident', 'FamilyMember', 'Visitor', 'Parcel', 'Amenity', 'AmenitySlot',
   'AmenityBooking', 'Bill', 'Payment', 'Vehicle', 'VehicleLog', 'StaffMember', 'AttendanceLog', 'Task',
   'MaintenanceRequest', 'EmergencyReport', 'Notice', 'Message', 'Poll', 'PollVote', 'Guard',
-  'Notification', 'Advertisement', 'Setting',
+  'Notification', 'Advertisement', 'Setting', 'RegistrationRequest',
 ]);

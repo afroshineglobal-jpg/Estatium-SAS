@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',          // new versions wait until the user taps "Update" (UpdateBanner)
       devOptions: { enabled: true },   // ← enables PWA install prompt in dev mode
       manifest: false,                  // ← use our own /public/manifest.json
       workbox: {

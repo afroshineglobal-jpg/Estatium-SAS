@@ -25,6 +25,9 @@ import Analytics from './pages/Analytics';
 import Advertisements from './pages/Advertisements';
 import Settings from './pages/Settings';
 import Subscription from './pages/Subscription';
+import Registrations from './pages/Registrations';
+import Register from './pages/Register';
+import UpdateBanner from './components/UpdateBanner';
 import PlatformApp, { PlatformLogin } from './platform/PlatformApp';
 
 function ProtectedRoute({ children }) {
@@ -99,6 +102,7 @@ function AppLayout() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/residents" element={<Residents />} />
+            <Route path="/registrations" element={<Registrations />} />
             <Route path="/visitors" element={<Visitors />} />
             <Route path="/parcels" element={<Parcels />} />
             <Route path="/amenities" element={<Amenities />} />
@@ -130,8 +134,11 @@ export default function App() {
             success: { iconTheme: { primary: '#22c55e', secondary: '#0a2e1a' } },
           }} />
           <OfflineBanner />
+          <UpdateBanner />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/register/:code" element={<Register />} />
             <Route path="/platform/login" element={<PlatformLogin />} />
             <Route path="/platform/*" element={<PlatformApp />} />
             <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />

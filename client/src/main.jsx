@@ -5,6 +5,13 @@ import App from './App';
 import './index.css';
 import { messaging } from './firebase';
 import { getToken, onMessage } from 'firebase/messaging';
+import { registerSW } from 'virtual:pwa-register';
+
+// Tell the app when a new version is waiting; check for one on load and then every hour.
+const updateSW = registerSW({
+  onNeedRefresh() { window.__updateSW = updateSW; window.dispatchEvent(new Event('app-update-ready')); },
+  onRegisteredSW(_url, reg) { if (reg) setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000); },
+});
 
 // Earlier builds cached authenticated API responses in 'api-cache'. Delete any leftover copy.
 if (typeof caches !== 'undefined') caches.delete('api-cache').catch(() => {});

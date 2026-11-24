@@ -266,6 +266,8 @@ model Tenant {
   deletedAt       DateTime?
   purgeAfter      DateTime?                       // hard-delete date after soft delete
   purgedAt        DateTime?                       // tenant data erased (invoices are retained)
+  registrationCode    String?  @unique            // resident self-registration invitation code (normalised, no dash)
+  registrationEnabled Boolean  @default(false)    // OFF until the estate admin turns it on
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -273,6 +275,7 @@ model Tenant {
   invoices        Invoice[]
   usageRecords    UsageRecord[]
   prepaidPayments PrepaidPayment[]
+  registrationRequests RegistrationRequest[]
 
   // tenant-scoped back-relations
   users                 User[]
@@ -618,6 +621,7 @@ model Unit {
   createdAt   DateTime   @default(now())
   residents   Resident[]
   parcels     Parcel[]
+  registrationRequests RegistrationRequest[]
 
   @@unique([tenantId, blockId, unitNumber])
   @@index([tenantId, isActive])
@@ -1054,4 +1058,33 @@ model Setting {
   value    String
 
   @@unique([tenantId, key])
+}
+
+// Resident self-registration. Created by the PUBLIC endpoint (no account yet); decided by the estate ADMIN.
+// passwordHash is the applicant's own chosen password: on approval it becomes the account password (nobody ever sees it).
+model RegistrationRequest {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  trackingToken  String    @unique
+  name           String
+  email          String
+  phone          String?
+  residentType   String    @default("TENANT") // OWNER | TENANT
+  unitId         String?
+  unit           Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  passwordHash   String
+  selfiePath     String?
+  consentAt      DateTime
+  consentVersion String
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED | NEEDS_INFO
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdUserId  String?
+  ip             String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
 }

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import {
-  LayoutDashboard, Users, UserCheck, Package, CalendarRange,
+  LayoutDashboard, Users, UserCheck, UserPlus, Package, CalendarRange,
   CreditCard, Receipt, Car, Briefcase, Wrench, AlertTriangle,
   MessageSquare, BarChart3, Megaphone, Settings, LogOut,
   Shield, ChevronRight
@@ -10,6 +10,7 @@ import {
 const allModules = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN', 'MAINTENANCE_MANAGER', 'RESIDENT', 'GUARD'] },
   { path: '/residents', icon: Users, label: 'Residents', roles: ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN'] },
+  { path: '/registrations', icon: UserPlus, label: 'Registrations', roles: ['ADMIN'] },
   { path: '/visitors', icon: UserCheck, label: 'Visitors', roles: ['ADMIN', 'SECURITY_ADMIN', 'RESIDENT', 'GUARD'] },
   { path: '/parcels', icon: Package, label: 'Parcels', roles: ['ADMIN', 'SECURITY_ADMIN', 'RESIDENT', 'GUARD'] },
   { path: '/amenities', icon: CalendarRange, label: 'Amenities', roles: ['ADMIN', 'RESIDENT'] },
