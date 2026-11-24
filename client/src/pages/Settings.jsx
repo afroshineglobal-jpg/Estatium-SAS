@@ -62,26 +62,20 @@ export default function Settings() {
         ))}
       </div>
 
-      <div className="card p-5 border-amber-900/30">
-        <p className="text-sm font-semibold text-amber-400 mb-3">Firebase Configuration</p>
-        <p className="text-slate-400 text-sm">To enable push notifications, add your Firebase credentials to the <code className="bg-surface-800 px-1.5 py-0.5 rounded text-estate-300 text-xs">.env</code> file on the server:</p>
-        <div className="mt-3 bg-surface-900 rounded-xl p-4 font-mono text-xs text-slate-400 space-y-1">
-          <p>FIREBASE_PROJECT_ID=your-project-id</p>
-          <p>FIREBASE_PRIVATE_KEY=your-private-key</p>
-          <p>FIREBASE_CLIENT_EMAIL=your-client-email</p>
-        </div>
-        <p className="text-slate-500 text-xs mt-3">Get these from Firebase Console → Project Settings → Service Accounts → Generate new private key</p>
+      <div className="card p-5">
+        <p className="text-sm font-semibold text-slate-300 mb-2">Alert sounds &amp; notifications</p>
+        <p className="text-slate-400 text-sm">Every person turns these on for their own phone or computer with the speaker icon at the top of the screen: <b>Turn on notifications</b>, then use the Test buttons to hear the visitor doorbell, the chat/notice pops and the emergency siren.</p>
       </div>
 
       <div className="card p-5">
         <p className="text-sm font-semibold text-slate-300 mb-3">System Information</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><p className="text-slate-500">Version</p><p className="text-slate-300">1.0.0 POC</p></div>
-          <div><p className="text-slate-500">Database</p><p className="text-slate-300">SQLite (Prisma)</p></div>
+          <div><p className="text-slate-500">Version</p><p className="text-slate-300">Pilot</p></div>
+          <div><p className="text-slate-500">Database</p><p className="text-slate-300">PostgreSQL</p></div>
           <div><p className="text-slate-500">Backend</p><p className="text-slate-300">Node.js + Express</p></div>
           <div><p className="text-slate-500">Frontend</p><p className="text-slate-300">React PWA (Vite)</p></div>
           <div><p className="text-slate-500">Real-time</p><p className="text-slate-300">Socket.io</p></div>
-          <div><p className="text-slate-500">Notifications</p><p className="text-slate-300">Firebase FCM</p></div>
+          <div><p className="text-slate-500">Notifications</p><p className="text-slate-300">Web Push</p></div>
         </div>
       </div>
     </div>

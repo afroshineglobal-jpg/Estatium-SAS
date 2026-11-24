@@ -12,6 +12,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
         cleanupOutdatedCaches: true,
+        importScripts: ['/push-sw.js'],      // Web Push handler (visitor / chat / emergency styles)
         // API responses are per-user (bills, visitors, residents) and must NEVER be stored in the
         // browser cache: on a shared phone the next user could be served the previous user's data.
         // Offline = cached app shell plus an offline banner; data always comes from the network.

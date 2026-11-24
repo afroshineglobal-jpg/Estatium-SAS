@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { unlockAudio, stopAlarm, alarmActive } from '../utils/sounds';
-import { listenForPushSounds, pushPermission } from '../utils/push';
+import { listenForPushSounds } from '../utils/push';
 
 /** Global: unlocks audio on the first tap, shows the red "silence the alarm" bar during an SOS, and wires push sounds. */
 export default function AlertSounds() {
@@ -17,7 +17,7 @@ export default function AlertSounds() {
     window.addEventListener('alarm-state', state); window.addEventListener('sound-blocked', blocked);
     return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); window.removeEventListener('alarm-state', state); window.removeEventListener('sound-blocked', blocked); };
   }, []);
-  useEffect(() => { if (user && pushPermission() === 'granted') listenForPushSounds(); }, [user?.id]);
+  useEffect(() => { if (user) listenForPushSounds(); }, [user?.id]);
   if (!alarm) return null;
   return (
     <div className="fixed top-0 inset-x-0 z-[80] bg-red-700 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-xl animate-pulse">
