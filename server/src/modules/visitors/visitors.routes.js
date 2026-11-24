@@ -78,7 +78,7 @@ router.put('/:id/approve', authenticate, authorize('RESIDENT', 'ADMIN'), H.wrap(
   const io = req.app.get('io');
   const payload = { visitorId: id, action };
   io.to(rooms.user(req.tenant.id, visitor.resident.userId)).emit('visitor-decision', { ...payload, entryCode: updated.entryCode });   // the resident gets the code
-  io.to(rooms.role(req.tenant.id, 'GUARD')).to(rooms.role(req.tenant.id, 'SECURITY_ADMIN')).emit('visitor-decision', payload);          // guards get the decision, NOT the code
+  io.to(rooms.role(req.tenant.id, 'GUARD')).to(rooms.role(req.tenant.id, 'SECURITY_ADMIN')).to(rooms.role(req.tenant.id, 'ADMIN')).emit('visitor-decision', payload);          // guards get the decision, NOT the code
   res.json(updated);
 }));
 

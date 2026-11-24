@@ -574,6 +574,15 @@ export default function Visitors() {
     return () => socket.off(`resident-${user.id}`, handler);
   }, [socketRef?.current, user.id, isResident, load]);
 
+  // Any decision (approve/deny) refreshes the list for everyone watching, so guards see it without reloading
+  useEffect(() => {
+    const socket = socketRef?.current;
+    if (!socket) return;
+    const onDecision = () => load();
+    socket.on('visitor-decision', onDecision);
+    return () => socket.off('visitor-decision', onDecision);
+  }, [socketRef?.current, load]);
+
   const handleApprove = async (id, action) => {
     setApprovingId(id);
     try {
