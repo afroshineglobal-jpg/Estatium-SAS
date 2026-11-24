@@ -16,7 +16,7 @@ function AddVehicleModal({ onClose, onDone, residents }) {
     setLoading(true);
     try {
       await api.post('/vehicles', form);
-      toast.success('Vehicle registered');
+      toast.success(user.role === 'RESIDENT' ? 'Request sent — waiting for estate admin approval' : 'Vehicle registered');
       onDone(); onClose();
     } catch {} finally { setLoading(false); }
   };
@@ -24,7 +24,8 @@ function AddVehicleModal({ onClose, onDone, residents }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal p-6" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-100 mb-4">Register Vehicle</h3>
+        <h3 className="text-lg font-semibold text-slate-100 mb-1">{user.role === 'RESIDENT' ? 'Request Vehicle Registration' : 'Register Vehicle'}</h3>
+        {user.role === 'RESIDENT' && <p className="text-xs text-slate-500 mb-4">Your estate administrator must approve the vehicle before the gate accepts it.</p>}
         <div className="space-y-3">
           <div><label className="label">Plate Number *</label><input className="input uppercase" value={form.plateNumber} onChange={e => setForm({...form, plateNumber: e.target.value.toUpperCase()})} placeholder="e.g. LAG-456-XY" /></div>
           {['ADMIN', 'SECURITY_ADMIN'].includes(user.role) && (
@@ -49,7 +50,7 @@ function AddVehicleModal({ onClose, onDone, residents }) {
         </div>
         <div className="flex gap-3 mt-5">
           <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={submit} disabled={loading}>{loading ? '...' : 'Register'}</button>
+          <button className="btn-primary flex-1" onClick={submit} disabled={loading}>{loading ? '...' : user.role === 'RESIDENT' ? 'Send request' : 'Register'}</button>
         </div>
       </div>
     </div>
@@ -64,6 +65,10 @@ export default function Vehicles() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [qrVehicle, setQrVehicle] = useState(null);
+  const [filter, setFilter] = useState('ALL');
+  const isAdmin = user.role === 'ADMIN';
+  const pending = vehicles.filter(v => v.status === 'PENDING').length;
+  const shown = vehicles.filter(v => filter === 'ALL' || v.status === filter);
 
   const load = async () => {
     try {
@@ -86,29 +91,52 @@ export default function Vehicles() {
     } catch {}
   };
 
+  const decide = async (id, kind) => {
+    let body = {};
+    if (kind === 'reject') { const reason = window.prompt('Reason (the resident will see this):'); if (!reason) return; body = { reason }; }
+    try { await api.post(`/vehicles/${id}/${kind}`, body); toast.success(kind === 'approve' ? 'Vehicle approved' : 'Request rejected'); load(); } catch {}
+  };
+  const cancelReq = async (id) => { if (!window.confirm('Withdraw this request?')) return; try { await api.post(`/vehicles/${id}/cancel`); toast.success('Request withdrawn'); load(); } catch {} };
+  const badge = { PENDING: 'badge-yellow', APPROVED: 'badge-green', REJECTED: 'badge-red' };
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="page-header">
-        <div><h1 className="page-title">Vehicle Management</h1><p className="text-slate-500 text-sm">{vehicles.length} registered vehicles</p></div>
-        <button className="btn-primary" onClick={() => setModal(true)}><Plus size={16} /> Register Vehicle</button>
+        <div><h1 className="page-title">Vehicle Management</h1><p className="text-slate-500 text-sm">{vehicles.length} vehicles{isAdmin && pending ? ` · ${pending} waiting for approval` : ''}</p></div>
+        <button className="btn-primary" onClick={() => setModal(true)}><Plus size={16} /> {user.role === 'RESIDENT' ? 'Request Registration' : 'Register Vehicle'}</button>
       </div>
+
+      {(isAdmin || user.role === 'RESIDENT') && (
+        <div className="flex gap-2 flex-wrap">{['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map(s => <button key={s} onClick={() => setFilter(s)} className={filter === s ? 'btn-primary' : 'btn-secondary'}>{s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}</button>)}</div>
+      )}
 
       <div className="table-container">
         <table className="table">
-          <thead><tr><th>Plate</th><th>Vehicle</th><th>Owner</th><th>Unit</th><th>QR</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Plate</th><th>Vehicle</th><th>Owner</th><th>Unit</th><th>Status</th><th>QR</th><th>Actions</th></tr></thead>
           <tbody>
-            {loading ? <tr><td colSpan={6} className="text-center py-10 text-slate-500">Loading...</td></tr>
-            : vehicles.map(v => (
+            {loading ? <tr><td colSpan={7} className="text-center py-10 text-slate-500">Loading...</td></tr>
+            : shown.map(v => (
               <tr key={v.id}>
                 <td><span className="font-mono font-bold text-estate-300">{v.plateNumber}</span></td>
                 <td className="text-slate-300">{v.make} {v.model} <span className="text-slate-500">· {v.color}</span></td>
                 <td className="text-slate-400">{v.resident?.user?.name}</td>
                 <td className="text-slate-400">{v.resident?.unit?.block?.name}-{v.resident?.unit?.unitNumber}</td>
                 <td>
-                  <button className="btn-ghost text-xs text-estate-400" onClick={() => setQrVehicle(v)}>QR</button>
+                  <span className={`badge ${badge[v.status] || 'badge-yellow'}`}>{v.status}</span>
+                  {v.status === 'REJECTED' && v.reviewNote && <p className="text-xs text-red-300 mt-1 max-w-[220px]">Reason: {v.reviewNote}</p>}
                 </td>
                 <td>
-                  {['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role) && (
+                  {v.status === 'APPROVED' && <button className="btn-ghost text-xs text-estate-400" onClick={() => setQrVehicle(v)}>QR</button>}
+                </td>
+                <td>
+                  {isAdmin && v.status === 'PENDING' && (
+                    <div className="flex gap-1 mb-1">
+                      <button className="btn-primary text-xs px-2 py-1" onClick={() => decide(v.id, 'approve')}>Approve</button>
+                      <button className="btn-secondary text-xs px-2 py-1" onClick={() => decide(v.id, 'reject')}>Reject</button>
+                    </div>
+                  )}
+                  {user.role === 'RESIDENT' && v.status === 'PENDING' && <button className="btn-ghost text-xs text-amber-400" onClick={() => cancelReq(v.id)}>Withdraw</button>}
+                  {v.status === 'APPROVED' && ['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role) && (
                     <div className="flex gap-1">
                       <button className="btn-ghost text-xs text-estate-400" onClick={() => logVehicle(v.id, 'ENTRY')} title="Log Entry"><LogIn size={14} /></button>
                       <button className="btn-ghost text-xs text-amber-400" onClick={() => logVehicle(v.id, 'EXIT')} title="Log Exit"><LogOut size={14} /></button>

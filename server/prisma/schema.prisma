@@ -830,6 +830,11 @@ model Vehicle {
   type        String       @default("CAR")
   qrCode      String?
   isActive    Boolean      @default(true)
+  status       String      @default("APPROVED") // PENDING | APPROVED | REJECTED  (resident requests start PENDING)
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  requestedAt  DateTime?
   createdAt   DateTime     @default(now())
   vehicleLogs VehicleLog[]
 
