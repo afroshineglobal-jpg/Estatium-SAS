@@ -39,4 +39,15 @@ const notifyByRole = async (role, title, body, type = 'GENERAL', data = {}) => {
   await notifyMany(users.map((u) => u.id), title, body, type, data);
 };
 
-module.exports = { notify, notifyMany, notifyByRole, kindOf };
+/** Push only (no in-app notification row): chat messages and estate-wide alerts. Fire-and-forget. */
+const pushOnly = (userIds, title, body, type = 'GENERAL', data = {}) => { if (userIds.length) setImmediate(() => pushToUsers(userIds, title, body, type, data)); };
+
+/** Ids of active users, optionally limited to some roles, never including `exceptId` (the sender). */
+async function activeUserIds({ roles, exceptId, extraIds } = {}) {
+  const where = { isActive: true, ...(roles ? { role: { in: roles } } : {}) };
+  const rows = await prisma.user.findMany({ where, select: { id: true }, take: 2000 });
+  const ids = new Set(rows.map((r) => r.id)); (extraIds || []).forEach((i) => ids.add(i)); if (exceptId) ids.delete(exceptId);
+  return [...ids];
+}
+
+module.exports = { notify, notifyMany, notifyByRole, pushOnly, activeUserIds, kindOf };

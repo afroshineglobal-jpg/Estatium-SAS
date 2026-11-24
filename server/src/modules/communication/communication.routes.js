@@ -4,6 +4,7 @@ const prisma = require('../../config/prisma');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { rooms } = require('../../realtime');
 const H = require('../../utils/http');
+const { pushOnly, activeUserIds } = require('../../utils/notify');
 
 const POSTERS = ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN'];
 const STAFF = ['ADMIN', 'SECURITY_ADMIN'];
@@ -56,6 +57,16 @@ router.post('/messages', authenticate, H.wrap(async (req, res) => {
   const roomId = H.str(req.body?.roomId, { name: 'roomId', required: true, max: 60 }); await assertRoomAccess(req, roomId);
   const message = await prisma.message.create({ data: { senderId: req.user.id, roomId, content: H.str(req.body?.content, { name: 'content', required: true, max: 2000 }), type: 'TEXT' }, include: { sender: { select: { name: true, role: true, avatar: true } } } });
   req.app.get('io').to(rooms.chat(req.tenant.id, roomId)).emit('new-message', message);
+  try {                                    // phone alert for people who are not looking at the app (never blocks the reply)
+    let ids;
+    const unit = /^unit-([0-9a-f-]{36})$/i.exec(roomId);
+    if (unit) {
+      const res2 = await prisma.resident.findMany({ where: { unitId: unit[1], isActive: true }, select: { userId: true } });
+      ids = await activeUserIds({ roles: STAFF, exceptId: req.user.id, extraIds: res2.map((r) => r.userId).filter(Boolean) });
+    } else ids = await activeUserIds({ exceptId: req.user.id });
+    const who = req.user.name || 'New message';
+    pushOnly(ids, roomId === 'announcements' ? `📢 ${who}` : `💬 ${who}`, String(message.content).slice(0, 140), 'MESSAGE', { roomId });
+  } catch (e) { console.warn('chat push failed:', e.message); }
   res.status(201).json(message);
 }));
 

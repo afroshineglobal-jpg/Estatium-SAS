@@ -40,6 +40,7 @@ export default function SoundSettings({ onClose }) {
             {perm === 'granted' && <><button className="btn-secondary" disabled={busy} onClick={turnOn}>Re-register this device</button><button className="btn-ghost" disabled={busy} onClick={turnOff}>Turn off</button></>}
           </div>
           <p className="text-xs text-slate-500 mt-2">With the app closed, phones play their own notification sound; the app's own sounds above play while it is open. Visitors, emergencies and chat/notices vibrate differently so you can tell them apart.</p>
+          {perm === 'granted' && <p className="text-xs text-amber-400/90 mt-3">To keep receiving alerts: do not "Force stop" the app, and set battery to "Unrestricted" for it (Android: Settings → Apps → Estatium → Battery). Swiping it away from recent apps is fine; on iPhone keep it added to the Home Screen.</p>}
         </div>
       </div>
     </div>
