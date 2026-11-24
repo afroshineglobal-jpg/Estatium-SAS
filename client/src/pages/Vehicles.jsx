@@ -72,10 +72,12 @@ export default function Vehicles() {
 
   const load = async () => {
     try {
+      const canList = ['ADMIN', 'SECURITY_ADMIN'].includes(user.role);            // only roles the server allows, so residents never trigger "Access denied"
+      const canLogs = ['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role);
       const [v, r, l] = await Promise.all([
         api.get('/vehicles'),
-        api.get('/residents').catch(() => []),
-        api.get('/vehicles/logs').catch(() => [])
+        canList ? api.get('/residents').catch(() => []) : [],
+        canLogs ? api.get('/vehicles/logs').catch(() => []) : []
       ]);
       setVehicles(v); setResidents(r); setLogs(l);
     } catch {} finally { setLoading(false); }
