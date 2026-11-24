@@ -474,6 +474,48 @@ function VerifyCodeModal({ mode, onClose, onDone }) {
 }
 
 // ─── MAIN VISITORS PAGE ───────────────────────────────────────────────────────
+const dt = (d) => (d ? new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const duration = (a, b) => { if (!a || !b) return '—'; const m = Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+
+/** Everything recorded about one visitor (opened by clicking a row in the history). */
+function VisitorDetailModal({ v, onClose, showCodes, showResident }) {
+  const F = ({ k, children }) => <div><p className="text-xs text-slate-500">{k}</p><div className="text-sm text-slate-200 break-words">{children || '—'}</div></div>;
+  const unit = v.resident?.unit ? `${v.resident.unit.block?.name}-${v.resident.unit.unitNumber}` : '';
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {v.photo ? <img src={v.photo} alt={v.name} className="w-20 h-20 rounded-xl object-cover border border-slate-700" />
+              : <div className="w-20 h-20 rounded-xl bg-surface-800 border border-slate-700 flex items-center justify-center text-2xl font-bold text-slate-500">{v.name?.charAt(0)}</div>}
+            <div className="min-w-0"><h3 className="text-lg font-semibold text-slate-100 truncate">{v.name}</h3><div className="mt-1">{statusBadge(v.status)}</div></div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl">✕</button>
+        </div>
+        <div className="card p-4 grid grid-cols-2 gap-3 mb-3">
+          <F k="Phone">{v.phone}</F><F k="Type">{v.visitorType}</F>
+          <F k="Purpose">{v.purpose}</F><F k="Pre-approved by resident">{v.preApproved ? 'Yes' : 'No'}</F>
+          <F k="Visiting unit">{unit}</F>{showResident && <F k="Resident visited">{v.resident?.user?.name}{v.resident?.user?.phone ? ` · ${v.resident.user.phone}` : ''}</F>}
+          <F k="Vehicle plate">{v.vehicleNumber && <span className="font-mono">{v.vehicleNumber}</span>}</F><F k="Leave at gate">{v.leaveAtGate ? 'Yes (parcel / delivery left at the gate)' : 'No'}</F>
+        </div>
+        <div className="card p-4 grid grid-cols-2 gap-3 mb-3">
+          <F k="Registered">{dt(v.createdAt)}</F><F k="Expected date">{v.expectedDate ? new Date(v.expectedDate).toLocaleDateString() : ''}</F>
+          <F k="Entered">{dt(v.entryTime)}</F><F k="Exited">{dt(v.exitTime)}</F>
+          <F k="Time inside">{v.entryTime ? (v.exitTime ? duration(v.entryTime, v.exitTime) : 'Still inside') : ''}</F>
+          {v.codeExpiresAt && <F k="Entry code valid until">{dt(v.codeExpiresAt)}</F>}
+        </div>
+        {(v.guardNote || v.denialNote) && <div className="card p-4 space-y-2 mb-3">{v.guardNote && <F k="Guard note">{v.guardNote}</F>}{v.denialNote && <F k="Reason entry was denied">{v.denialNote}</F>}</div>}
+        {showCodes && (v.entryCode || v.exitCode) && (
+          <div className="card p-4 grid grid-cols-2 gap-3 mb-3">
+            {v.status === 'APPROVED' && v.entryCode && <F k="Entry code"><span className="font-mono font-bold tracking-widest text-estate-300">{v.entryCode}</span></F>}
+            {v.status === 'INSIDE' && v.exitCode && <F k="Exit code"><span className="font-mono font-bold tracking-widest text-amber-300">{v.exitCode}</span></F>}
+          </div>)}
+        <button className="btn-secondary w-full justify-center" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Visitors() {
   const { user } = useAuth();
   const socketRef = useSocket();
@@ -485,6 +527,7 @@ export default function Visitors() {
   const [filter, setFilter]         = useState('');
   const [approvingId, setApprovingId] = useState(null);
   const [exitCodeVisitor, setExitCodeVisitor] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const isGuard    = ['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role);
   const isResident = user.role === 'RESIDENT';
@@ -658,7 +701,7 @@ export default function Visitors() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-12 text-slate-500">No visitors found</td></tr>
             ) : filtered.map(v => (
-              <tr key={v.id}>
+              <tr key={v.id} className="cursor-pointer hover:bg-surface-800/40" onClick={() => setDetail(v)} title="Click for full details">
                 <td>
                   <div className="flex items-center gap-3">
                     {v.photo
@@ -683,9 +726,9 @@ export default function Visitors() {
                 <td><span className="badge-gray text-xs">{v.visitorType}</span></td>
                 <td>{statusBadge(v.status)}</td>
                 <td className="text-xs text-slate-500">
+                  <p className="text-slate-400">{new Date(v.entryTime || v.createdAt).toLocaleDateString()}</p>
                   {v.entryTime && <p>In {new Date(v.entryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
                   {v.exitTime  && <p>Out {new Date(v.exitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
-                  {!v.entryTime && <p>{new Date(v.createdAt).toLocaleDateString()}</p>}
                 </td>
                 <td>
                   {v.status === 'APPROVED' && v.entryCode && (
@@ -693,7 +736,7 @@ export default function Visitors() {
                   )}
                 </td>
                 {isResident && (
-                  <td>
+                  <td onClick={e => e.stopPropagation()}>
                     {v.status === 'PENDING' && (
                       <div className="flex gap-1">
                         <button className="btn-ghost text-xs text-estate-400" disabled={approvingId === v.id} onClick={() => handleApprove(v.id, 'APPROVED')}><CheckCircle size={14} /></button>
@@ -718,6 +761,7 @@ export default function Visitors() {
       {modal === 'walkin'      && <WalkInModal       onClose={() => setModal(null)} onDone={load} units={units.filter(u => u.isOccupied)} />}
       {modal === 'entry-code'  && <VerifyCodeModal   mode="entry" onClose={() => setModal(null)} onDone={load} />}
       {modal === 'exit-code'   && <VerifyCodeModal   mode="exit"  onClose={() => setModal(null)} onDone={load} />}
+      {detail                  && <VisitorDetailModal v={detail} onClose={() => setDetail(null)} showCodes={isResident || user.role === 'ADMIN'} showResident={!isResident} />}
       {exitCodeVisitor         && <ExitCodeModal     visitor={exitCodeVisitor} onClose={() => setExitCodeVisitor(null)} />}
     </div>
   );
