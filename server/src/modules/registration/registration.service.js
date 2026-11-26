@@ -21,9 +21,11 @@ const SELFIE_KEEP_DAYS = 30;                                    // after approva
 const OPEN = ['PENDING', 'NEEDS_INFO'];
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-const normCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const genCode = () => Array.from({ length: 8 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join('');
-const showCode = (c) => (c ? `${c.slice(0, 4)}-${c.slice(4)}` : null);
+// The key to register is the estate's permanent 6-LETTER estate code (Tenant.estateCode, set by the platform owner).
+const EC = require('../../utils/estateCode');
+const normCode = EC.normalize;
+const genCode = () => EC.rand(6);
+const showCode = (c) => (c ? String(c).trim() : null);
 const notOpen = () => H.notFound('Registration');             // identical answer for wrong code / disabled / deleted estate
 
 // ── selfie storage (private folder, never served statically) ────────────────────────────────────
@@ -53,9 +55,9 @@ const removeSelfie = async (rel) => { if (!rel) return; try { await fs.promises.
 // ── lookups ───────────────────────────────────────────────────────────────────────────────────────
 async function tenantByCode(code, { requireEnabled = true } = {}) {
   const c = normCode(code);
-  if (c.length !== 8) throw notOpen();
+  if (!EC.isValid(c)) throw notOpen();
   const prisma = require('../../config/prisma');
-  const t = await prisma.system.tenant.findUnique({ where: { registrationCode: c }, select: { id: true, name: true, slug: true, status: true, registrationEnabled: true } });
+  const t = await prisma.system.tenant.findUnique({ where: { estateCode: c }, select: { id: true, name: true, slug: true, status: true, registrationEnabled: true } });
   if (!t || t.status === 'DELETED' || (requireEnabled && !t.registrationEnabled)) throw notOpen();
   return t;
 }
@@ -115,21 +117,13 @@ async function publicStatus(code, token) {
 // ── ESTATE ADMIN (called inside an authenticated tenant request: prisma.* is already tenant-scoped) ──
 async function getSettings(req) {
   const prisma = require('../../config/prisma');
-  const t = await prisma.system.tenant.findUnique({ where: { id: req.tenant.id }, select: { registrationCode: true, registrationEnabled: true } });
-  return { enabled: t.registrationEnabled, code: showCode(t.registrationCode) };
+  const t = await prisma.system.tenant.findUnique({ where: { id: req.tenant.id }, select: { estateCode: true, registrationEnabled: true } });
+  return { enabled: t.registrationEnabled, code: showCode(t.estateCode) };
 }
-async function updateSettings(req, { enabled, regenerate }) {
+async function updateSettings(req, { enabled }) {          // the estate code itself is permanent and set by the platform owner
   const prisma = require('../../config/prisma'); const { audit } = require('../../utils/audit');
-  const cur = await prisma.system.tenant.findUnique({ where: { id: req.tenant.id }, select: { registrationCode: true, registrationEnabled: true } });
-  const data = {};
-  if (typeof enabled === 'boolean') data.registrationEnabled = enabled;
-  if (regenerate === true || (!cur.registrationCode && data.registrationEnabled)) {
-    for (let i = 0; i < 5; i++) {
-      try { await prisma.system.tenant.update({ where: { id: req.tenant.id }, data: { ...data, registrationCode: genCode() } }); break; }
-      catch (e) { if (e.code !== 'P2002' || i === 4) throw e; }
-    }
-  } else if (Object.keys(data).length) await prisma.system.tenant.update({ where: { id: req.tenant.id }, data });
-  await audit({ req, tenantId: req.tenant.id, actorType: 'TENANT_USER', actorId: req.user.id, actorEmail: req.user.email, action: 'REGISTRATION_SETTINGS_CHANGED', entity: 'Tenant', entityId: req.tenant.id, after: { enabled, regenerated: regenerate === true } });
+  if (typeof enabled === 'boolean') await prisma.system.tenant.update({ where: { id: req.tenant.id }, data: { registrationEnabled: enabled } });
+  await audit({ req, tenantId: req.tenant.id, actorType: 'TENANT_USER', actorId: req.user.id, actorEmail: req.user.email, action: 'REGISTRATION_SETTINGS_CHANGED', entity: 'Tenant', entityId: req.tenant.id, after: { enabled } });
   return getSettings(req);
 }
 

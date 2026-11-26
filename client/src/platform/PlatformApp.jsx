@@ -4,6 +4,7 @@ import { Shield, Building2, Receipt, Layers, Activity, LogOut, Megaphone } from 
 import toast from 'react-hot-toast';
 import { platformApi as api, PLATFORM_TOKEN_KEY } from '../utils/api';
 import { fmt } from '../utils/money';
+import PlaceFields from './PlaceFields';
 
 const day = (d) => (d ? new Date(d).toLocaleDateString() : '—');
 const stBadge = { ACTIVE: 'badge-green', TRIAL: 'badge-blue', SUSPENDED: 'badge-yellow', EXPIRED: 'badge-red', DELETED: 'badge-gray', PAID: 'badge-green', OPEN: 'badge-yellow', VOID: 'badge-gray' };
@@ -72,20 +73,31 @@ function Overview() {
 
 function NewTenant({ onDone, onClose }) {
   const [plans, setPlans] = useState([]); const [currencies, setCurrencies] = useState([]);
-  const [f, setF] = useState({ name: '', slug: '', adminEmail: '', adminName: '', planCode: 'standard', currency: 'USD', startAsActive: false });
-  const [out, setOut] = useState(null);
-  useEffect(() => { api.get('/plans').then(setPlans); api.get('/currencies').then((c) => setCurrencies(c.filter((x) => x.isActive))); }, []);
-  const submit = async () => { try { setOut(await api.post('/tenants', f)); onDone(); } catch { /* toast shown */ } };
+  const [f, setF] = useState({ name: '', slug: '', adminEmail: '', adminName: '', planCode: 'standard', currency: 'USD', startAsActive: false, estateCode: '', address: '', country: 'Nigeria', state: '', district: '', city: '', area: '', locality: '', postalCode: '' });
+  const [out, setOut] = useState(null); const [places, setPlaces] = useState({}); const [codeTouched, setCodeTouched] = useState(false);
+  useEffect(() => { api.get('/plans').then(setPlans); api.get('/currencies').then((c) => setCurrencies(c.filter((x) => x.isActive))); api.get('/places').then(setPlaces).catch(() => {}); }, []);
+  const suggestCode = useCallback((name) => api.get('/estate-code/suggest', { params: { name } }).then((r) => setF((p) => ({ ...p, estateCode: r.code }))).catch(() => {}), []);
+  useEffect(() => { if (codeTouched || f.name.trim().length < 2) return undefined; const t = setTimeout(() => suggestCode(f.name), 500); return () => clearTimeout(t); }, [f.name, codeTouched, suggestCode]);
+  const submit = async () => {
+    for (const [k, l] of [['name', 'Estate name'], ['address', 'Address'], ['country', 'Country'], ['state', 'State'], ['locality', 'Locality'], ['postalCode', 'ZIP / postal code']]) if (!String(f[k] || '').trim()) return toast.error(`${l} is required`);
+    if (!/^[A-Za-z]{6}$/.test(f.estateCode)) return toast.error('Estate code must be exactly 6 letters');
+    try { setOut(await api.post('/tenants', f)); onDone(); } catch { /* toast shown */ }
+  };
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   return (
-    <div className="modal-overlay" onClick={onClose}><div className="modal p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}><div className="modal p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
       {out ? (<div className="space-y-3"><h3 className="text-lg font-semibold">Estate created</h3>
-        <p className="text-sm">Login estate: <b>{out.tenant.slug}</b><br />Admin: <b>{out.admin.email}</b></p>
+        <p className="text-sm">Login estate: <b>{out.tenant.slug}</b><br />Estate code for residents: <b className="font-mono tracking-widest text-estate-300">{out.tenant.estateCode}</b><br />Admin: <b>{out.admin.email}</b></p>
         {out.temporaryPassword && <p className="text-sm bg-amber-900/30 border border-amber-800/50 rounded p-3">Temporary password (shown once):<br /><code className="text-amber-200 select-all">{out.temporaryPassword}</code></p>}
         <button className="btn-primary w-full" onClick={onClose}>Done</button></div>) : (<>
         <h3 className="text-lg font-semibold mb-3">New estate</h3>
         <div className="space-y-3">
           <div><label className="label">Estate name</label><input className="input" value={f.name} onChange={set('name')} /></div>
+          <div><label className="label">Estate code (6 letters, unique worldwide) *</label>
+            <div className="flex gap-2"><input className="input font-mono uppercase tracking-widest" maxLength={6} value={f.estateCode} onChange={(e) => { setCodeTouched(true); setF({ ...f, estateCode: e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase() }); }} />
+              <button type="button" className="btn-secondary whitespace-nowrap" onClick={() => { setCodeTouched(false); suggestCode(f.name); }}>Suggest</button></div>
+            <p className="text-xs text-slate-500 mt-1">Residents type this code to register. It is checked against all estates.</p></div>
+          <PlaceFields value={f} onChange={setF} places={places} required />
           <div><label className="label">Slug (login code)</label><input className="input" value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value.toLowerCase() })} placeholder="greenville" /></div>
           <div className="grid grid-cols-2 gap-3"><div><label className="label">Admin name</label><input className="input" value={f.adminName} onChange={set('adminName')} /></div><div><label className="label">Admin email</label><input className="input" type="email" value={f.adminEmail} onChange={set('adminEmail')} /></div></div>
           <div className="grid grid-cols-2 gap-3">
@@ -218,6 +230,36 @@ function AdminsPanel({ id, t, me }) {
   );
 }
 
+function EstateDetails({ t, me, reload }) {
+  const keys = ['estateCode', 'address', 'country', 'state', 'district', 'city', 'area', 'locality', 'postalCode'];
+  const [edit, setEdit] = useState(false); const [f, setF] = useState({}); const [places, setPlaces] = useState({}); const [busy, setBusy] = useState(false);
+  const open = () => { setF(Object.fromEntries(keys.map((k) => [k, t[k] || '']))); api.get('/places').then(setPlaces).catch(() => {}); setEdit(true); };
+  const save = async () => {
+    if (!/^[A-Za-z]{6}$/.test(f.estateCode)) return toast.error('Estate code must be exactly 6 letters');
+    setBusy(true);
+    try { await api.patch(`/tenants/${t.id}`, f); toast.success('Estate details saved'); setEdit(false); reload(); } catch { /* toast */ } finally { setBusy(false); }
+  };
+  const row = (l, v) => <div><p className="text-xs text-slate-500">{l}</p><p className="text-sm text-slate-200">{v || '—'}</p></div>;
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center"><h3 className="font-semibold">Estate details</h3>{can(me, 'tenants:update') && <button className="btn-secondary ml-auto text-xs" onClick={open}>Edit</button>}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div><p className="text-xs text-slate-500">Estate code</p><p className="font-mono tracking-widest text-estate-300 text-lg">{t.estateCode || '—'}</p></div>
+        {row('Address', t.address)}{row('Country', t.country)}{row('State', t.state)}{row('LGA / District', t.district)}{row('City', t.city)}{row('Area', t.area)}{row('Locality', t.locality)}{row('ZIP / postal code', t.postalCode)}
+      </div>
+      {edit && <div className="modal-overlay" onClick={() => setEdit(false)}><div className="modal p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-3">Estate details</h3>
+        <div className="space-y-3">
+          <div><label className="label">Estate code (6 letters)</label><input className="input font-mono uppercase tracking-widest" maxLength={6} value={f.estateCode} onChange={(e) => setF({ ...f, estateCode: e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase() })} />
+            <p className="text-xs text-amber-400 mt-1">Changing the code stops the old registration link from working.</p></div>
+          <PlaceFields value={f} onChange={setF} places={places} />
+        </div>
+        <div className="flex gap-3 mt-5"><button className="btn-secondary flex-1" onClick={() => setEdit(false)}>Cancel</button><button className="btn-primary flex-1" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></div>
+      </div></div>}
+    </div>
+  );
+}
+
 function TenantDetail({ me }) {
   const { id } = useParams(); const nav = useNavigate();
   const [t, setT] = useState(null); const [plans, setPlans] = useState([]); const [currencies, setCurrencies] = useState([]);
@@ -254,6 +296,7 @@ function TenantDetail({ me }) {
           <div><label className="label">Max units (hard cap)</label><input className="input" type="number" value={price.maxUnits} onChange={(ev) => setPrice({ ...price, maxUnits: ev.target.value })} /></div>
           <button className="btn-primary justify-center" onClick={() => act(() => api.put(`/tenants/${id}/pricing`, { customUnitAmount: price.customUnitAmount === '' ? null : String(price.customUnitAmount), committedUnits: num(price.committedUnits), maxUnits: num(price.maxUnits), applyNow: true }), 'Pricing saved')}>Save pricing</button></div>
         <p className="text-xs text-slate-500">Saving applies immediately and prorates the current period. Leave “custom price” empty to use the plan price.</p></div>}
+      <EstateDetails t={t} me={me} reload={load} />
       <AdminsPanel id={id} t={t} me={me} />
       <PrepaidPanel id={id} t={t} me={me} reload={load} />
       <div className="table-container"><table className="table"><thead><tr><th>Invoice</th><th>Issued</th><th>Units</th><th>Total</th><th>Paid</th><th>Status</th><th /></tr></thead><tbody>

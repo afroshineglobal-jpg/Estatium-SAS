@@ -36,6 +36,12 @@ router.post('/tenants', need('tenants:create'), wrap(async (req, res) => {
   res.status(201).json(out);
 }));
 
+router.get('/estate-code/suggest', need('tenants:create'), wrap(async (req, res) => res.json({ code: await T.suggestEstateCode(str(req.query.name, { max: 120 }) || '') })));
+router.get('/places', need('tenants:read'), wrap(async (req, res) => {          // spellings already used, so forms can suggest them
+  const out = {}; for (const k of ['country', 'state', 'district', 'city', 'area', 'locality']) out[k] = (await db.tenant.findMany({ where: { [k]: { not: null }, status: { not: 'DELETED' } }, distinct: [k], select: { [k]: true }, take: 500 })).map((r) => r[k]).sort();
+  res.json(out);
+}));
+
 router.get('/tenants/:id', need('tenants:read'), wrap(async (req, res) => {
   const t = await T.getTenantOrThrow(req.params.id);
   const [stats, invoices, events, estimate, prepaid] = await Promise.all([

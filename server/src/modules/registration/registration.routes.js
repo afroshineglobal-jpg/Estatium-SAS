@@ -7,7 +7,7 @@ const R = require('./registration.service');
 
 router.use(authenticate, authorize('ADMIN'));
 router.get('/settings', wrap(async (req, res) => res.json(await R.getSettings(req))));
-router.post('/settings', wrap(async (req, res) => res.json(await R.updateSettings(req, { enabled: req.body?.enabled, regenerate: req.body?.regenerate }))));
+router.post('/settings', wrap(async (req, res) => res.json(await R.updateSettings(req, { enabled: req.body?.enabled }))));
 router.get('/', wrap(async (req, res) => res.json(await R.list(req.query.status))));
 router.get('/:id/selfie', wrap(async (req, res) => {
   const file = await R.selfieFile(req.params.id);

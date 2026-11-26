@@ -25,7 +25,7 @@ export default function Registrations() {
     try { await api.post(`/registrations/${id}/${kind}`, body); toast.success(kind === 'approve' ? 'Approved — account created' : 'Rejected'); await load(); } catch { /* toast shown by api */ } finally { setBusy(''); }
   };
   const setting = async (body) => { try { setCfg(await api.post('/registrations/settings', body)); } catch { /* toast */ } };
-  const link = cfg?.code ? `${window.location.origin}/register/${cfg.code.replace('-', '')}` : '';
+  const link = cfg?.code ? `${window.location.origin}/register/${cfg.code}` : '';
 
   return (
     <div className="space-y-4">
@@ -34,14 +34,13 @@ export default function Registrations() {
         <div className="card p-4 space-y-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div><p className="text-sm text-white font-medium">Self-registration is {cfg.enabled ? 'ON' : 'OFF'}</p>
-              {cfg.code && <p className="text-xs text-slate-400">Invitation code: <span className="font-mono text-slate-200 tracking-widest">{cfg.code}</span></p>}</div>
+              {cfg.code && <p className="text-xs text-slate-400">Estate code: <span className="font-mono text-slate-200 tracking-widest">{cfg.code}</span></p>}</div>
             <div className="flex gap-2">
               <button className="btn-secondary" onClick={() => setting({ enabled: !cfg.enabled })}>{cfg.enabled ? 'Turn off' : 'Turn on'}</button>
-              {cfg.code && <button className="btn-secondary" onClick={() => window.confirm('The old code will stop working. Continue?') && setting({ regenerate: true })}>New code</button>}
             </div></div>
           {cfg.enabled && link && <div className="flex gap-2 items-center"><input readOnly className="input flex-1 text-xs" value={link} />
             <button className="btn-secondary" onClick={() => navigator.clipboard.writeText(link).then(() => toast.success('Link copied'))}>Copy link</button></div>}
-          {cfg.enabled && <p className="text-xs text-slate-500">Share this link or code with residents. Anyone with it can apply, but nobody gets an account until you approve.</p>}
+          {cfg.enabled && <p className="text-xs text-slate-500">Share this link or the estate code with residents. They must enter the estate code to apply, and nobody gets an account until you approve.</p>}
         </div>)}
       <div className="flex gap-2 flex-wrap">{['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map((s) => <button key={s} onClick={() => setFilter(s)} className={filter === s ? 'btn-primary' : 'btn-secondary'}>{s === 'ALL' ? 'All records' : s.charAt(0) + s.slice(1).toLowerCase()}</button>)}</div>
       {!rows.length && <p className="text-sm text-slate-400">Nothing here.</p>}

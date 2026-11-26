@@ -58,10 +58,9 @@ export default function Register() {
   const lookup = async (c) => {
     setErr(''); setBusy(true);
     try { const r = await http.get(`/registration/${encodeURIComponent(c.trim())}`); setInfo(r.data); }
-    catch (e) { setInfo(null); setErr(e.response?.status === 404 ? 'That code was not recognised. Please check it with your estate administrator.' : errMsg(e)); }
+    catch (e) { setInfo(null); setErr(e.response?.status === 404 ? 'That estate code was not recognised, or registration is not open for it. Please check it with your estate administrator.' : errMsg(e)); }
     finally { setBusy(false); }
   };
-  useEffect(() => { if (code && !done) lookup(code); /* eslint-disable-next-line */ }, []);
 
   const pick = async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setSelfie(await toJpegDataUrl(file)); setErr(''); } catch { setErr('Could not use that photo. Please try another.'); } };
   const submit = async (e) => {
@@ -79,11 +78,11 @@ export default function Register() {
 
   if (done && code) return <Shell><Status code={code.trim()} token={done} /></Shell>;
   if (!info) return (
-    <Shell><h2 className="text-lg font-semibold text-white mb-1">Join your estate</h2><p className="text-sm text-slate-400 mb-4">Enter the invitation code from your estate administrator.</p>
+    <Shell><h2 className="text-lg font-semibold text-white mb-1">Join your estate</h2><p className="text-sm text-slate-400 mb-4">Enter your estate code (6 letters) from your estate administrator. A link from your administrator fills it in; press Continue to confirm it.</p>
       <form onSubmit={(e) => { e.preventDefault(); lookup(code); }}>
-        <input className="input w-full uppercase tracking-widest" placeholder="XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+        <input className="input w-full uppercase tracking-widest font-mono text-center text-xl" placeholder="ABCDEF" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase())} autoFocus />
         {err && <p className="text-red-400 text-sm mt-2">{err}</p>}
-        <button className="btn-primary w-full mt-4" disabled={busy || !code}>{busy ? 'Checking…' : 'Continue'}</button></form></Shell>);
+        <button className="btn-primary w-full mt-4" disabled={busy || code.length !== 6}>{busy ? 'Checking…' : 'Continue'}</button></form></Shell>);
 
   return (
     <Shell><h2 className="text-lg font-semibold text-white">Register for {info.estate.name}</h2>

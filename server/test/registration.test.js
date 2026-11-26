@@ -6,10 +6,11 @@ const R = require('../src/modules/registration/registration.service');
 
 const jpeg = (n) => { const b = Buffer.alloc(n, 1); b[0] = 0xff; b[1] = 0xd8; b[2] = 0xff; return 'data:image/jpeg;base64,' + b.toString('base64'); };
 
-test('codes are 8 chars from the unambiguous alphabet and normalise', () => {
-  for (let i = 0; i < 200; i++) assert.match(R.genCode(), /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
-  assert.equal(R.normCode(' ab3d-k7mq '), 'AB3DK7MQ');
-  assert.equal(R.showCode('AB3DK7MQ'), 'AB3D-K7MQ');
+test('estate codes are 6 capital letters and normalise', () => {
+  for (let i = 0; i < 200; i++) assert.match(R.genCode(), /^[ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/);
+  assert.equal(R.normCode(' ab-cdef '), 'ABCDEF');
+  assert.equal(R.normCode('AB3D12'), 'ABD');       // digits are not part of an estate code
+  assert.equal(R.showCode('ABCDEF'), 'ABCDEF');
   assert.equal(R.showCode(null), null);
 });
 

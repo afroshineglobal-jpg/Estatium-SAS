@@ -7,6 +7,18 @@ const { assertTransition, tenantPatchFor, subscriptionStatusFor } = require('../
 const { invalidateTenant } = require('../../middleware/auth.middleware');
 const { audit } = require('../../utils/audit');
 const { bad, notFound, conflict, str, password: validatePassword } = require('../../utils/http');
+const EC = require('../../utils/estateCode');
+
+const PLACE_KEYS = ['address', 'area', 'locality', 'city', 'district', 'state', 'postalCode', 'country'];
+/** Tidy a place name: trim, collapse spaces, and reuse the spelling already used by another estate (so "lagos" and "Lagos" target as one place). */
+async function tidyPlace(key, value) {
+  const v = str(value, { name: key, max: 200 }); if (!v) return null;
+  const clean = v.replace(/\s+/g, ' ').trim();
+  if (!['area', 'locality', 'city', 'district', 'state', 'country'].includes(key)) return clean;
+  const hit = await db.tenant.findFirst({ where: { [key]: { equals: clean, mode: 'insensitive' } }, select: { [key]: true } });
+  return hit?.[key] || clean;
+}
+const suggestEstateCode = (name) => EC.suggest(name, async (c) => !!(await db.tenant.findUnique({ where: { estateCode: c }, select: { id: true } })));
 
 const db = prisma.system;
 const RESERVED_SLUGS = new Set(['www', 'api', 'admin', 'app', 'platform', 'static', 'assets', 'mail', 'support', 'billing', 'status', 'login', 'estatium']);
@@ -31,6 +43,13 @@ async function createTenant(input, actor, req) {
   const adminEmail = str(input.adminEmail, { name: 'adminEmail', max: 200, required: true }).toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(adminEmail)) throw bad('adminEmail is not a valid email');
   const adminName = str(input.adminName, { name: 'adminName', max: 120 }) || 'Estate Admin';
+  const place = {};
+  for (const k of PLACE_KEYS) place[k] = await tidyPlace(k, input[k]);
+  for (const [k, label] of [['address', 'Address'], ['locality', 'Locality'], ['state', 'State'], ['country', 'Country'], ['postalCode', 'ZIP / postal code']]) if (!place[k]) throw bad(`${label} is required`);
+  let estateCode = EC.normalize(input.estateCode);
+  if (input.estateCode && !EC.isValid(estateCode)) throw bad('Estate code must be exactly 6 letters (A-Z)');
+  if (estateCode) { if (await db.tenant.findUnique({ where: { estateCode }, select: { id: true } })) throw conflict('That estate code is already used by another estate', 'ESTATE_CODE_TAKEN'); }
+  else estateCode = await suggestEstateCode(name);
 
   const [exists, currency, plan] = await Promise.all([
     db.tenant.findUnique({ where: { slug } }),
@@ -57,8 +76,8 @@ async function createTenant(input, actor, req) {
   const result = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${id}, true)`;      // needed when connected as the RLS-bound role
     const tenant = await tx.tenant.create({ data: {
-      id, slug, name, status, currency: currency.code, timezone: input.timezone || 'UTC', country: input.country || null,
-      contactName: input.contactName || null, contactEmail: input.contactEmail || adminEmail, contactPhone: input.contactPhone || null, address: input.address || null,
+      id, slug, name, status, currency: currency.code, timezone: input.timezone || 'UTC', country: place.country, estateCode, area: place.area, locality: place.locality, city: place.city, district: place.district, state: place.state, postalCode: place.postalCode,
+      contactName: input.contactName || null, contactEmail: input.contactEmail || adminEmail, contactPhone: input.contactPhone || null, address: place.address,
       trialEndsAt, activatedAt: active ? now : null,
     } });
     const subscription = await tx.subscription.create({ data: {
@@ -70,7 +89,7 @@ async function createTenant(input, actor, req) {
     await tx.subscriptionEvent.create({ data: { subscriptionId: subscription.id, tenantId: id, type: 'CREATED', data: { plan: plan.code, currency: currency.code, status }, ...eventActor(actor) } });
     await tx.user.create({ data: { tenantId: id, email: adminEmail, password: hash, role: 'ADMIN', name: adminName, mustChangePassword: true } });
     await tx.setting.createMany({ data: [
-      { tenantId: id, key: 'estate_name', value: name }, { tenantId: id, key: 'estate_address', value: input.address || '' },
+      { tenantId: id, key: 'estate_name', value: name }, { tenantId: id, key: 'estate_address', value: place.address || '' },
       { tenantId: id, key: 'visitor_auto_expire_hours', value: '24' }, { tenantId: id, key: 'max_family_members', value: '15' },
     ] });
     return { tenant, subscription };
@@ -84,7 +103,15 @@ async function updateTenant(id, patch, actor, req) {
   const before = await getTenantOrThrow(id);
   const data = {};
   if (patch.name !== undefined) data.name = str(patch.name, { name: 'name', min: 2, max: 120, required: true });
-  for (const k of ['contactName', 'contactEmail', 'contactPhone', 'address', 'country', 'timezone']) if (patch[k] !== undefined) data[k] = str(patch[k], { name: k, max: 200 });
+  for (const k of ['contactName', 'contactEmail', 'contactPhone', 'timezone']) if (patch[k] !== undefined) data[k] = str(patch[k], { name: k, max: 200 });
+  for (const k of PLACE_KEYS) if (patch[k] !== undefined) data[k] = await tidyPlace(k, patch[k]);
+  if (patch.estateCode !== undefined) {
+    const code = EC.normalize(patch.estateCode);
+    if (!EC.isValid(code)) throw bad('Estate code must be exactly 6 letters (A-Z)');
+    const other = await db.tenant.findUnique({ where: { estateCode: code }, select: { id: true } });
+    if (other && other.id !== id) throw conflict('That estate code is already used by another estate', 'ESTATE_CODE_TAKEN');
+    data.estateCode = code;
+  }
   if (!Object.keys(data).length) throw bad('Nothing to update');
   const after = await db.tenant.update({ where: { id }, data });
   invalidateTenant(id);
@@ -151,4 +178,4 @@ async function resetAdminPassword(tenantId, adminEmail, actor, req) {
   return { email, temporaryPassword: pw };
 }
 
-module.exports = { listAdmins, resetAdminPassword, createTenant, updateTenant, setStatus, deleteTenant, listTenants, getTenantOrThrow, RESERVED_SLUGS, SLUG_RE, RETENTION_DAYS };
+module.exports = { suggestEstateCode, listAdmins, resetAdminPassword, createTenant, updateTenant, setStatus, deleteTenant, listTenants, getTenantOrThrow, RESERVED_SLUGS, SLUG_RE, RETENTION_DAYS };

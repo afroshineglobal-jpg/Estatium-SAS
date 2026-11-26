@@ -266,7 +266,14 @@ model Tenant {
   deletedAt       DateTime?
   purgeAfter      DateTime?                       // hard-delete date after soft delete
   purgedAt        DateTime?                       // tenant data erased (invoices are retained)
-  registrationCode    String?  @unique            // resident self-registration invitation code (normalised, no dash)
+  estateCode      String?      @unique @db.Char(6)   // 6 capital letters, globally unique: residents need it to register
+  area            String?
+  locality        String?
+  city            String?
+  district        String?                         // LGA (Nigeria) / District (India) / ...
+  state           String?
+  postalCode      String?
+  registrationCode    String?  @unique            // legacy 8-character invitation code (no longer used)
   registrationEnabled Boolean  @default(false)    // OFF until the estate admin turns it on
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
