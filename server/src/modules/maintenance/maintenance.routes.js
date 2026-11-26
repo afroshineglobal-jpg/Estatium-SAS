@@ -4,6 +4,7 @@ const prisma = require('../../config/prisma');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { notify, notifyByRole } = require('../../utils/notify');
 const H = require('../../utils/http');
+const Inv = require('../../billing/invoice');
 
 const STATUSES = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'];
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
@@ -41,7 +42,7 @@ router.put('/:id', authenticate, authorize(...MANAGERS), H.wrap(async (req, res)
   // Charging the resident is now an explicit choice, and idempotent (one bill per request).
   if (b.billResident === true && request.status === 'COMPLETED' && request.actualCost && request.actualCost.gt(0)) {
     const resident = await prisma.resident.findFirst({ where: { userId: request.userId } });
-    if (resident) await prisma.bill.createMany({ skipDuplicates: true, data: [{ residentId: resident.id, title: `Maintenance: ${request.title}`, amount: request.actualCost, currency: req.tenant.currency, dueDate: new Date(), type: 'ONE_TIME', sourceType: 'MAINTENANCE_REQUEST', sourceId: request.id }] });
+    if (resident) await prisma.bill.createMany({ skipDuplicates: true, data: [{ residentId: resident.id, title: `Maintenance: ${request.title}`, ...Inv.price(await Inv.loadConfig(prisma), 'REPAIR', request.actualCost), currency: req.tenant.currency, dueDate: new Date(), type: 'ONE_TIME', sourceType: 'MAINTENANCE_REQUEST', sourceId: request.id }] });
   }
   if (data.status) await notify(request.userId, '🔧 Request Updated', `Your maintenance request "${request.title}" is now ${request.status}.`, 'MAINTENANCE');
   res.json(request);

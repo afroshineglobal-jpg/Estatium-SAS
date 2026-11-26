@@ -5,6 +5,7 @@ const { Prisma } = prisma;
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { notify } = require('../../utils/notify');
 const H = require('../../utils/http');
+const Inv = require('../../billing/invoice');
 
 const STAFF = ['ADMIN', 'SECURITY_ADMIN', 'FINANCE_ADMIN', 'MAINTENANCE_MANAGER', 'GUARD'];
 const minutes = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
@@ -88,7 +89,7 @@ router.put('/bookings/:id/status', authenticate, authorize('ADMIN'), H.wrap(asyn
 
   if (status === 'APPROVED' && booking.totalAmount && booking.totalAmount.gt(0)) {
     const resident = await prisma.resident.findFirst({ where: { userId: booking.userId } });
-    if (resident) await prisma.bill.createMany({ skipDuplicates: true, data: [{ residentId: resident.id, title: `${booking.amenity.name} Booking`, amount: booking.totalAmount, currency: req.tenant.currency, dueDate: booking.date, type: 'AMENITY', sourceType: 'AMENITY_BOOKING', sourceId: booking.id }] });
+    if (resident) await prisma.bill.createMany({ skipDuplicates: true, data: [{ residentId: resident.id, title: `${booking.amenity.name} Booking`, ...Inv.price(await Inv.loadConfig(prisma), 'AMENITY', booking.totalAmount), currency: req.tenant.currency, dueDate: booking.date, type: 'AMENITY', sourceType: 'AMENITY_BOOKING', sourceId: booking.id }] });
   }
   res.json(booking);
 }));

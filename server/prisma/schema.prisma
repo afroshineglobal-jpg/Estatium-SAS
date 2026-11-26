@@ -795,6 +795,10 @@ model Bill {
   status      BillStatus @default(UNPAID)
   type        BillType   @default(MAINTENANCE)
   description String?
+  subtotal    Decimal?   @db.Decimal(14, 2)   // before tax; `amount` is the total payable
+  taxTotal    Decimal    @default(0) @db.Decimal(14, 2)
+  taxLines    Json?                          // [{ name, rate, amount }]
+  invoiceNo   String?                        // INV-2026-00001, assigned by trigger
   sourceType  String?                        // e.g. AMENITY_BOOKING, MAINTENANCE_REQUEST (idempotency)
   sourceId    String?
   paidAt      DateTime?
@@ -802,6 +806,7 @@ model Bill {
   payments    Payment[]
 
   @@unique([tenantId, sourceType, sourceId])
+  @@unique([tenantId, invoiceNo])
   @@index([tenantId, residentId, status])
   @@index([tenantId, status, dueDate])
 }

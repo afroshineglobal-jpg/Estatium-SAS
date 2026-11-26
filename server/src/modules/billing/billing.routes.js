@@ -8,6 +8,8 @@ const { notify, notifyMany } = require('../../utils/notify');
 const { audit } = require('../../utils/audit');
 const { format } = require('../../billing/money');
 const H = require('../../utils/http');
+const Inv = require('../../billing/invoice');
+const InvPdf = require('../../billing/invoicePdf');
 
 const BILL_TYPES = ['MAINTENANCE', 'UTILITY', 'PENALTY', 'AMENITY', 'ONE_TIME'];
 const BILL_STATUSES = ['UNPAID', 'PARTIAL', 'PAID', 'OVERDUE', 'WAIVED', 'VOID'];
@@ -37,11 +39,13 @@ router.post('/', authenticate, authorize(...FINANCE), H.wrap(async (req, res) =>
   const dueDate = H.date(req.body?.dueDate, 'dueDate');
   const resident = await prisma.resident.findFirst({ where: { id: H.requireId(residentId, 'residentId'), isActive: true } });
   if (!resident) throw H.notFound('Resident');
+  const billType = type ? H.oneOf(type, BILL_TYPES, 'type') : 'MAINTENANCE';
+  const p = Inv.price(await Inv.loadConfig(prisma), Inv.CATEGORY_OF_TYPE[billType], amount);       // taxes come from Settings > Billing
   const bill = await prisma.bill.create({ data: {
-    residentId: resident.id, title: H.str(title, { name: 'title', required: true, max: 160 }), amount, currency: req.tenant.currency, dueDate,
-    type: type ? H.oneOf(type, BILL_TYPES, 'type') : 'MAINTENANCE', description: H.str(req.body?.description, { max: 500 }),
+    residentId: resident.id, title: H.str(title, { name: 'title', required: true, max: 160 }), ...p, currency: req.tenant.currency, dueDate,
+    type: billType, description: H.str(req.body?.description, { max: 500 }),
   } });
-  await notify(resident.userId, '💰 New Bill', `New bill "${bill.title}" of ${fmt(amount, req)}`, 'BILLING', { billId: bill.id });
+  await notify(resident.userId, '💰 New Invoice', `Invoice ${bill.invoiceNo || ''} "${bill.title}" of ${fmt(p.amount, req)}`, 'BILLING', { billId: bill.id });
   res.status(201).json(bill);
 }));
 
@@ -55,14 +59,15 @@ router.post('/bulk', authenticate, authorize(...FINANCE), H.wrap(async (req, res
   const residents = await prisma.resident.findMany({ where: { isActive: true }, select: { id: true, userId: true } });
   if (!residents.length) throw H.bad('No active residents found');
 
+  const p = Inv.price(await Inv.loadConfig(prisma), Inv.CATEGORY_OF_TYPE[billType], amount);
   const runKey = crypto.createHash('sha1').update(`${t}|${dueDate.toISOString()}|${billType}|${amount}`).digest('hex').slice(0, 16);
   const startedAt = new Date(Date.now() - 1000);
   const r = await prisma.bill.createMany({ skipDuplicates: true, data: residents.map((x) => ({
-    residentId: x.id, title: t, amount, currency: req.tenant.currency, dueDate, type: billType, description: H.str(req.body?.description, { max: 500 }), sourceType: 'BULK', sourceId: `${runKey}:${x.id}`,
+    residentId: x.id, title: t, ...p, currency: req.tenant.currency, dueDate, type: billType, description: H.str(req.body?.description, { max: 500 }), sourceType: 'BULK', sourceId: `${runKey}:${x.id}`,
   })) });
   if (r.count) {
     const fresh = await prisma.bill.findMany({ where: { sourceType: 'BULK', sourceId: { startsWith: `${runKey}:` }, createdAt: { gte: startedAt } }, select: { resident: { select: { userId: true } } } });
-    await notifyMany(fresh.map((b) => b.resident.userId), '💰 New Bill', `New bill "${t}" of ${fmt(amount, req)}`, 'BILLING', {});
+    await notifyMany(fresh.map((b) => b.resident.userId), '💰 New Invoice', `New invoice "${t}" of ${fmt(p.amount, req)}`, 'BILLING', {});
   }
   await audit({ req, tenantId: req.tenant.id, actorType: 'TENANT_USER', actorId: req.user.id, actorEmail: req.user.email, action: 'BILLS_BULK_CREATED', after: { title: t, amount, created: r.count, skippedDuplicates: residents.length - r.count } });
   res.status(201).json({ created: r.count, skippedDuplicates: residents.length - r.count });
@@ -93,6 +98,27 @@ router.post('/:id/pay', authenticate, authorize(...FINANCE), H.wrap(async (req, 
   await notify(bill.resident.userId, '✅ Payment Recorded', `Payment of ${fmt(amount.toString(), req)} for "${bill.title}" recorded.`, 'BILLING', { billId: id });
   await audit({ req, tenantId: req.tenant.id, actorType: 'TENANT_USER', actorId: req.user.id, actorEmail: req.user.email, action: 'BILL_PAYMENT_RECORDED', entity: 'Bill', entityId: id, after: { amount: amount.toString(), method, settled } });
   res.status(201).json(updated.payments[0]);
+}));
+
+// One invoice, for the resident it belongs to or for the finance team.
+async function invoiceOf(req, id) {
+  const where = { id }; if (req.user.role === 'RESIDENT') { const me = await prisma.resident.findFirst({ where: { userId: req.user.id } }); if (!me) throw H.notFound('Invoice'); where.residentId = me.id; }
+  else if (!FINANCE.includes(req.user.role)) throw H.forbidden();
+  const bill = await prisma.bill.findFirst({ where, include: { payments: { where: { status: 'SUCCEEDED' }, orderBy: { paidAt: 'asc' } }, resident: { include: { user: { select: { name: true, email: true } }, unit: { include: { block: true } } } } } });
+  if (!bill) throw H.notFound('Invoice');
+  const rows = await prisma.setting.findMany({ where: { key: { in: ['estate_name', 'estate_address', 'estate_logo'] } } }); const s = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const cfg = await Inv.loadConfig(prisma);
+  const t = await prisma.system.tenant.findFirst({ where: { id: req.tenant.id }, select: { name: true, address: true, locality: true, city: true, state: true, country: true, postalCode: true } });
+  const address = s.estate_address || [t?.address, t?.locality, t?.city, t?.state, t?.postalCode, t?.country].filter(Boolean).join(', ');
+  return { estate: { name: s.estate_name || t?.name || 'Estate', address, logo: s.estate_logo || null }, bill, payments: bill.payments,
+    resident: { name: bill.resident.user?.name, email: bill.resident.user?.email, unit: bill.resident.unit ? `${bill.resident.unit.block?.name ? `${bill.resident.unit.block.name}-` : ''}${bill.resident.unit.unitNumber}` : '' },
+    footer: cfg.invoice.footer, payTo: cfg.invoice.payTo };
+}
+router.get('/:id/invoice', authenticate, H.wrap(async (req, res) => { const i = await invoiceOf(req, H.requireId(req.params.id)); res.json({ ...i, estate: { ...i.estate, logo: undefined } }); }));
+router.get('/:id/invoice.pdf', authenticate, H.wrap(async (req, res) => {
+  const i = await invoiceOf(req, H.requireId(req.params.id));
+  const pdf = await InvPdf.render(i);
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${(i.bill.invoiceNo || 'invoice').replace(/[^A-Za-z0-9_-]/g, '')}.pdf"`, 'Cache-Control': 'private, no-store' }).send(pdf);
 }));
 
 // GET /api/billing/summary — real money: "collected" = recorded payments, not bills flagged PAID
