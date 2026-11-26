@@ -317,6 +317,7 @@ model Tenant {
   notifications         Notification[]
   advertisements        Advertisement[]
   settings              Setting[]
+  tickets               Ticket[]
 
   @@index([status])
 }
@@ -1171,4 +1172,39 @@ model AdCampaignStat {
   clicks      Int        @default(0)
 
   @@id([campaignId, tenantId])
+}
+
+/// Feedback / improvement tickets (015_tickets.sql). Platform table: the estate API scopes by tenantId + userId in code.
+model Ticket {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId            String
+  userName          String
+  userRole          String?
+  unitLabel         String?
+  category          String          @default("IDEA")     // IDEA | PROBLEM | QUESTION | OTHER
+  subject           String
+  status            String          @default("OPEN")     // OPEN | IN_REVIEW | PLANNED | DONE | CLOSED
+  unreadForPlatform Boolean         @default(true)
+  unreadForUser     Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @default(now()) @updatedAt
+  lastMessageAt     DateTime        @default(now())
+  messages          TicketMessage[]
+
+  @@index([tenantId, userId, lastMessageAt(sort: Desc)])
+  @@index([status, lastMessageAt(sort: Desc)])
+}
+
+model TicketMessage {
+  id           String   @id @default(uuid())
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromPlatform Boolean  @default(false)
+  authorName   String
+  body         String
+  createdAt    DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }

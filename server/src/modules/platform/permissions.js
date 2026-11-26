@@ -4,13 +4,13 @@ const PERMISSIONS = [
   'tenants:read', 'tenants:create', 'tenants:update', 'tenants:suspend', 'tenants:activate', 'tenants:delete',
   'subscriptions:read', 'subscriptions:update', 'invoices:read', 'invoices:manage',
   'plans:read', 'plans:manage', 'coupons:read', 'coupons:manage', 'currencies:read', 'currencies:manage',
-  'revenue:read', 'usage:read', 'audit:read', 'platform_users:manage', 'ads:manage',
+  'revenue:read', 'usage:read', 'audit:read', 'platform_users:manage', 'ads:manage', 'tickets:manage',
 ];
 
 const ROLE_PERMISSIONS = {
   SUPER_OWNER:   ['*'],
   BILLING_ADMIN: ['tenants:read', 'subscriptions:*', 'invoices:*', 'plans:*', 'coupons:*', 'currencies:read', 'revenue:read', 'usage:read', 'audit:read'],
-  SUPPORT:       ['tenants:read', 'tenants:update', 'subscriptions:read', 'invoices:read', 'plans:read', 'coupons:read', 'currencies:read', 'usage:read', 'audit:read'],
+  SUPPORT:       ['tickets:*', 'tenants:read', 'tenants:update', 'subscriptions:read', 'invoices:read', 'plans:read', 'coupons:read', 'currencies:read', 'usage:read', 'audit:read'],
   READ_ONLY:     ['tenants:read', 'subscriptions:read', 'invoices:read', 'plans:read', 'coupons:read', 'currencies:read', 'revenue:read', 'usage:read', 'audit:read'],
 };
 

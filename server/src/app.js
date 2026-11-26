@@ -40,6 +40,7 @@ function buildApp() {
   app.use('/api/communication',  require('./modules/communication/communication.routes'));
   app.use('/api/analytics',      require('./modules/analytics/analytics.routes'));
   app.use('/api/advertisements', require('./modules/advertisements/advertisements.routes'));
+  app.use('/api/tickets',        require('./modules/tickets/tickets.routes'));
   app.use('/api/settings',       require('./modules/settings/settings.routes'));
   // NOTE: the unauthenticated POST /api/send-notification test route was removed (anyone could push arbitrary
   // notifications through the push service). Pushes are sent only by server-side events via utils/notify.js.

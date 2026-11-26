@@ -19,6 +19,7 @@ import Billing from './pages/Billing';
 import Vehicles from './pages/Vehicles';
 import Staff from './pages/Staff';
 import Maintenance from './pages/Maintenance';
+import Support from './pages/Support';
 import Emergency from './pages/Emergency';
 import Communication from './pages/Communication';
 import Analytics from './pages/Analytics';
@@ -118,6 +119,7 @@ function AppLayout() {
             <Route path="/emergency" element={<Emergency />} />
             <Route path="/communication" element={<Communication />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="*" element={<Navigate to="/" replace />} />

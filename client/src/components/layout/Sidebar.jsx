@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth';
 import {
   LayoutDashboard, Users, UserCheck, UserPlus, Download, Package, CalendarRange,
   CreditCard, Receipt, Car, Briefcase, Wrench, AlertTriangle,
-  MessageSquare, BarChart3, Settings, LogOut,
+  MessageSquare, BarChart3, Settings, LogOut, Lightbulb,
   Shield, ChevronRight
 } from 'lucide-react';
 
@@ -23,6 +23,7 @@ const allModules = [
   { path: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['ADMIN', 'FINANCE_ADMIN', 'SECURITY_ADMIN'] },
   { path: '/subscription', icon: Receipt, label: 'Subscription', roles: ['ADMIN', 'FINANCE_ADMIN'] },
   { path: '/exports', icon: Download, label: 'Records & Exports', roles: ['ADMIN'] },
+  { path: '/support', icon: Lightbulb, label: 'Feedback & ideas', roles: ['ADMIN', 'RESIDENT', 'FINANCE_ADMIN', 'SECURITY_ADMIN', 'MAINTENANCE_MANAGER'] },
   { path: '/settings', icon: Settings, label: 'Settings', roles: ['ADMIN'] },
 ];
 

@@ -5,7 +5,7 @@ import SoundSettings from '../SoundSettings';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../utils/api';
 
-const NOTIF_PAGE = { VISITOR: '/visitors', EMERGENCY: '/emergency', MESSAGE: '/communication', NOTICE: '/communication', BILLING: '/billing', PARCEL: '/parcels', MAINTENANCE: '/maintenance', MAINTENANCE_MANAGER: '/maintenance' };
+const NOTIF_PAGE = { VISITOR: '/visitors', EMERGENCY: '/emergency', MESSAGE: '/communication', NOTICE: '/communication', BILLING: '/billing', PARCEL: '/parcels', MAINTENANCE: '/maintenance', MAINTENANCE_MANAGER: '/maintenance', GENERAL: '/' };
 
 export default function Header({ onMenuToggle }) {
   const { user } = useAuth();

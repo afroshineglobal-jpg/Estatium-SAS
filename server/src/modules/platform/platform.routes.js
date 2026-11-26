@@ -25,6 +25,7 @@ router.use(platformAuth);
 router.get('/auth/me', (req, res) => res.json({ user: safe(req.platformUser), permissions: ROLE_PERMISSIONS[req.platformUser.role], allPermissions: PERMISSIONS }));
 router.post('/auth/password', wrap(changeOwnPassword));
 
+router.use('/tickets', require('./tickets.routes'));  // feedback tickets from estate users (tickets:manage)
 router.use('/ads', require('./ads.routes'));          // advertising: Platform owner only (ads:manage)
 
 // ── tenants ──────────────────────────────────────────────────────────────────

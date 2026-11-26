@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Routes, Route, Navigate, Link, useNavigate, useParams } from 'react-router-dom';
-import { Shield, Building2, Receipt, Layers, Activity, LogOut, Megaphone } from 'lucide-react';
+import { Routes, Route, Navigate, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Shield, Building2, Receipt, Layers, Activity, LogOut, Megaphone, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { platformApi as api, PLATFORM_TOKEN_KEY } from '../utils/api';
 import { fmt } from '../utils/money';
@@ -38,13 +38,15 @@ export function PlatformLogin() {
 }
 
 function Shell({ me, children }) {
-  const nav = useNavigate();
-  const links = [['/platform', Activity, 'Overview'], ['/platform/tenants', Building2, 'Estates'], ['/platform/invoices', Receipt, 'Invoices'], ['/platform/plans', Layers, 'Plans & pricing'], ['/platform/ads', Megaphone, 'Ads & banners'], ['/platform/audit', Shield, 'Audit log']];
+  const nav = useNavigate(); const loc = useLocation();
+  const [unread, setUnread] = useState(0);
+  useEffect(() => { if (can(me, 'tickets:manage')) api.get('/tickets/summary').then((s) => setUnread(s.unread)).catch(() => {}); }, [me, loc.pathname]);
+  const links = [['/platform', Activity, 'Overview'], ['/platform/tenants', Building2, 'Estates'], ['/platform/invoices', Receipt, 'Invoices'], ['/platform/plans', Layers, 'Plans & pricing'], ['/platform/tickets', MessageSquare, 'Tickets'], ['/platform/ads', Megaphone, 'Ads & banners'], ['/platform/audit', Shield, 'Audit log']];
   return (
     <div className="min-h-screen bg-surface-900 text-slate-200">
       <header className="border-b border-slate-800 px-4 py-3 flex items-center gap-6 flex-wrap">
         <span className="font-display font-bold text-slate-100">Estatium Platform</span>
-        <nav className="flex gap-4 text-sm flex-wrap">{links.map(([to, Icon, label]) => <Link key={to} to={to} className="text-slate-400 hover:text-estate-300 flex items-center gap-1"><Icon size={14} />{label}</Link>)}</nav>
+        <nav className="flex gap-4 text-sm flex-wrap">{links.map(([to, Icon, label]) => <Link key={to} to={to} className="text-slate-400 hover:text-estate-300 flex items-center gap-1"><Icon size={14} />{label}{to === '/platform/tickets' && unread > 0 && <span className="ml-1 bg-amber-500 text-black text-[10px] font-bold rounded-full px-1.5">{unread}</span>}</Link>)}</nav>
         <div className="ml-auto text-xs text-slate-500 flex items-center gap-3">{me?.user?.email} · {me?.user?.role}
           <button className="btn-ghost text-xs" onClick={() => { localStorage.removeItem(PLATFORM_TOKEN_KEY); nav('/platform/login'); }}><LogOut size={13} /> Sign out</button></div>
       </header>
@@ -343,6 +345,31 @@ function pictureToDataUri(file) {
   });
 }
 
+const TK_STATUS = { OPEN: 'Received', IN_REVIEW: 'Under review', PLANNED: 'Planned', DONE: 'Done', CLOSED: 'Closed' };
+function Tickets({ me }) {
+  const [rows, setRows] = useState(null); const [status, setStatus] = useState(''); const [open, setOpen] = useState(null); const [t, setT] = useState(null); const [msg, setMsg] = useState(''); const [next, setNext] = useState('');
+  const load = () => api.get(`/tickets${status ? `?status=${status}` : ''}`).then(setRows).catch(() => setRows([]));
+  useEffect(() => { load(); }, [status]);
+  const show = async (id) => { setOpen(id); setMsg(''); setT(await api.get(`/tickets/${id}`)); setNext(''); load(); };
+  const reply = async () => { if (!msg.trim()) return; try { await api.post(`/tickets/${open}/reply`, { message: msg, status: next || undefined }); toast.success('Reply sent'); show(open); } catch { /* toast */ } };
+  const setSt = async (s) => { try { await api.put(`/tickets/${open}/status`, { status: s }); show(open); } catch { /* toast */ } };
+  if (!can(me, 'tickets:manage')) return <p className="text-slate-400">You do not have access to tickets.</p>;
+  return (<div className="space-y-4"><div><h1 className="page-title">Tickets</h1><p className="text-sm text-slate-500">Ideas, problems and questions from estate users.</p></div>
+    <div className="flex flex-wrap gap-2">{['', 'OPEN', 'IN_REVIEW', 'PLANNED', 'DONE', 'CLOSED'].map((s) => <button key={s} onClick={() => setStatus(s)} className={`btn-${status === s ? 'primary' : 'secondary'} text-xs px-3`}>{s ? TK_STATUS[s] : 'All'}</button>)}</div>
+    <div className="table-container"><table className="table"><thead><tr><th>Subject</th><th>From</th><th>Estate</th><th>Type</th><th>Status</th><th>Last activity</th></tr></thead><tbody>
+      {!rows ? <tr><td colSpan={6} className="text-center py-8 text-slate-500">Loading…</td></tr> : rows.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-slate-500">No tickets</td></tr> : rows.map((r) => (
+        <tr key={r.id} className="cursor-pointer hover:bg-slate-800/40" onClick={() => show(r.id)}><td className="font-medium text-slate-200">{r.unread && <span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-2" />}{r.subject}</td><td className="text-sm">{r.userName}<span className="text-xs text-slate-500"> {r.unitLabel || r.userRole}</span></td><td className="text-sm">{r.estate}</td><td className="text-xs text-slate-400">{r.category}</td><td><span className="badge-gray">{TK_STATUS[r.status]}</span></td><td className="text-xs text-slate-500">{new Date(r.lastMessageAt).toLocaleString()}</td></tr>))}
+    </tbody></table></div>
+    {open && t && <div className="modal-overlay" onClick={() => setOpen(null)}><div className="modal p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <h3 className="text-lg font-semibold">{t.subject}</h3><p className="text-xs text-slate-500 mb-3">{t.userName} · {t.unitLabel || t.userRole} · {t.estate} · {t.category}</p>
+      <div className="space-y-2 mb-3">{t.messages.map((m) => <div key={m.id} className={`rounded-lg p-3 text-sm ${m.fromPlatform ? 'bg-estate-900/40 border border-estate-800/50' : 'bg-surface-800'}`}><p className="text-xs text-slate-500 mb-1">{m.fromPlatform ? 'You (Estatium team)' : m.authorName} · {new Date(m.createdAt).toLocaleString()}</p><p className="whitespace-pre-wrap break-words">{m.body}</p></div>)}</div>
+      <textarea className="input resize-none h-20" maxLength={3000} placeholder="Reply to the user…" value={msg} onChange={(e) => setMsg(e.target.value)} />
+      <div className="flex gap-2 mt-2"><select className="select" value={next} onChange={(e) => setNext(e.target.value)}><option value="">Keep status ({TK_STATUS[t.status]})</option>{Object.entries(TK_STATUS).map(([k, l]) => <option key={k} value={k}>Set to {l}</option>)}</select><button className="btn-primary" onClick={reply}>Send reply</button></div>
+      <div className="flex gap-2 mt-3 flex-wrap">{['IN_REVIEW', 'PLANNED', 'DONE', 'CLOSED'].map((s) => <button key={s} className="btn-ghost text-xs" onClick={() => setSt(s)}>Mark {TK_STATUS[s]}</button>)}</div>
+      <button className="btn-secondary w-full mt-4" onClick={() => setOpen(null)}>Close</button></div></div>}
+  </div>);
+}
+
 function Ads({ me }) {
   const [ads, setAds] = useState(null); const [stats, setStats] = useState(null);
   const blank = { placement: 'TOP', pages: [], title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
@@ -421,6 +448,7 @@ export default function PlatformApp() {
         <Route path="/tenants/:id" element={<TenantDetail me={me} />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/plans" element={<Plans me={me} />} />
+        <Route path="/tickets" element={<Tickets me={me} />} />
         <Route path="/ads" element={<Ads me={me} />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="*" element={<Navigate to="/platform" replace />} />
