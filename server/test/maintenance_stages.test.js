@@ -28,3 +28,15 @@ test('route order: /stats is not swallowed by /:id, and invoicing is finance-onl
   assert.match(src, /router\.get\('\/:id\(\[0-9a-fA-F-\]\{36\}\)'/);
   assert.match(src, /router\.post\('\/:id\/invoice', authenticate, authorize\('ADMIN', 'FINANCE_ADMIN'\)/);
 });
+
+test('billing state of a request: none, pending, part-paid, paid; void and waived ignored', () => {
+  const b = (amount, amountPaid, status = 'UNPAID') => ({ amount, amountPaid, status });
+  assert.equal(S.billingOf([]).status, 'NONE'); assert.equal(S.billingOf(undefined).status, 'NONE');
+  assert.equal(S.billingOf([b('1000', '0')]).status, 'PENDING');
+  assert.equal(S.billingOf([b('1000', '400', 'PARTIAL')]).status, 'PARTIAL');
+  assert.equal(S.billingOf([b('1000', '1000', 'PAID')]).status, 'PAID');
+  assert.equal(S.billingOf([b('1000', '1000', 'PAID'), b('500', '0')]).status, 'PARTIAL');       // a second, unpaid invoice
+  assert.equal(S.billingOf([b('1000', '0', 'VOID'), b('500', '500', 'PAID')]).status, 'PAID');
+  assert.equal(S.billingOf([b('1000', '0', 'OVERDUE')]).overdue, true);
+  assert.equal(S.billingOf([b('100.10', '0'), b('200.20', '0')]).total, 300.3);
+});

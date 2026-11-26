@@ -15,6 +15,9 @@ const FLOW = STAGES.slice(0, 7).map((x) => x[0]);       // the path a request no
 const GROUPS = { '': null, open: ['OPEN', 'ACCEPTED', 'ASSIGNED'], progress: ['IN_PROGRESS', 'AWAITING_PARTS', 'FIXED'], done: ['COMPLETED', 'CLOSED', 'REJECTED'] };
 const GROUP_LABEL = { '': 'All', open: 'New', progress: 'In progress', done: 'Finished' };
 
+const BILLING = { PAID: ['Paid', 'badge-green'], PARTIAL: ['Part-paid', 'badge-yellow'], PENDING: ['Payment pending', 'badge-red'] };
+const billingBadge = (b) => { if (!b || b.status === 'NONE') return null; const [t, c] = BILLING[b.status]; return <span className={`${c} text-[11px]`}>{t}{b.overdue && b.status !== 'PAID' ? ' · overdue' : ''}</span>; };
+
 const priorityBadge = (p) => {
   const map = { LOW: 'badge-gray', MEDIUM: 'badge-blue', HIGH: 'badge-yellow', URGENT: 'badge-red' };
   return <span className={map[p] || 'badge-gray'}>{p}</span>;
@@ -70,7 +73,8 @@ function NewRequestModal({ onClose, onDone }) {
 function UpdateModal({ request, onClose, onDone, canInvoice }) {
   const [f, setF] = useState({ status: request.status, assigneeName: request.assigneeName || '', expectedDate: request.expectedDate ? request.expectedDate.slice(0, 10) : '',
     estimatedCost: request.estimatedCost || '', actualCost: request.actualCost || '', message: '', notes: request.notes || '' });
-  const [inv, setInv] = useState({ amount: '', description: '' });
+  const suggested = request.actualCost || request.estimatedCost || '';
+  const [inv, setInv] = useState({ amount: request.billing?.status === 'NONE' || !request.billing ? String(suggested) : '', description: '' });
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -115,13 +119,13 @@ function UpdateModal({ request, onClose, onDone, canInvoice }) {
         </div>
         {canInvoice && (
           <div className="mt-5 pt-4 border-t border-slate-800 space-y-2">
-            <p className="text-sm font-semibold text-slate-200">Raise an invoice at this stage</p>
-            <p className="text-xs text-slate-500">For an inspection fee, parts deposit or the final bill. Tax for repair work is added from Settings. You can raise several.</p>
+            <p className="text-sm font-semibold text-slate-200">Convert to invoice {request.billing && request.billing.status !== 'NONE' && <span className="ml-2">{billingBadge(request.billing)}</span>}</p>
+            <p className="text-xs text-slate-500">The cost is filled in for you. It becomes an invoice the resident can pay, and this request then shows Paid or Pending. Use it at any stage: inspection fee, parts deposit or final bill. You can raise several; repair-work tax from Settings is added.</p>
             <div className="grid grid-cols-3 gap-2">
               <input type="number" min="0" className="input" placeholder={`Amount (${symbol()})`} value={inv.amount} onChange={e => setInv({ ...inv, amount: e.target.value })} />
               <input className="input col-span-2" maxLength={500} placeholder="What is it for? (optional)" value={inv.description} onChange={e => setInv({ ...inv, description: e.target.value })} />
             </div>
-            <button className="btn-secondary w-full text-sm" onClick={raise} disabled={loading}>Send invoice to resident</button>
+            <button className="btn-secondary w-full text-sm" onClick={raise} disabled={loading}>Convert to invoice and send to resident</button>
           </div>
         )}
       </div>
@@ -139,7 +143,8 @@ function TrackModal({ id, onClose }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-1"><h3 className="text-lg font-semibold text-slate-100">{r.title}</h3>{statusBadge(r.status)}</div>
-        <p className="text-slate-400 text-sm mb-4">{r.description}</p>
+        <p className="text-slate-400 text-sm mb-2">{r.description}</p>
+        {r.billing?.status !== 'NONE' && <p className="mb-4 text-sm text-slate-300">Billing: {billingBadge(r.billing)} <span className="text-xs text-slate-500 ml-1">{fmt(r.billing.paid)} of {fmt(r.billing.total)} paid</span></p>}
 
         {declined ? <p className="text-sm text-red-300 mb-4">This request was declined.</p> : (
           <ol className="mb-4 space-y-2">
@@ -221,6 +226,7 @@ export default function Maintenance() {
             <p className="text-xs text-slate-500 line-clamp-2">{r.description}</p>
             {isManager && <p className="text-xs text-slate-500">By {r.user?.name}</p>}
             <div className="flex items-center justify-between text-xs text-slate-500"><span>{priorityBadge(r.priority)} <span className="ml-1">{r.category}</span></span><span>{new Date(r.createdAt).toLocaleDateString()}</span></div>
+            {(r.billing?.status !== 'NONE' || r.actualCost || r.estimatedCost) && <div className="flex items-center justify-between text-xs"><span className="font-mono text-slate-300">{r.actualCost ? fmt(r.actualCost) : r.estimatedCost ? `~${fmt(r.estimatedCost)}` : ''}</span>{billingBadge(r.billing) || <span className="text-slate-600">Not billed</span>}</div>}
             <div className="flex gap-2 pt-1">
               <button className="btn-secondary text-xs flex-1" onClick={() => setTracking(r.id)}>Track</button>
               {isManager && <button className="btn-primary text-xs flex-1" onClick={() => setUpdating(r)}>Update</button>}
@@ -248,7 +254,7 @@ export default function Maintenance() {
                 <td><span className="badge-gray text-xs">{r.category}</span></td>
                 <td>{priorityBadge(r.priority)}</td>
                 <td>{statusBadge(r.status)}{r.assigneeName && <p className="text-[11px] text-slate-500 mt-1">{r.assigneeName}</p>}</td>
-                <td className="font-mono text-slate-400 text-sm">{r.actualCost ? `${fmt(r.actualCost)}` : r.estimatedCost ? `~${fmt(r.estimatedCost)}` : '—'}</td>
+                <td className="font-mono text-slate-400 text-sm">{r.actualCost ? `${fmt(r.actualCost)}` : r.estimatedCost ? `~${fmt(r.estimatedCost)}` : '—'}<div className="mt-1 font-sans">{billingBadge(r.billing) || (r.actualCost || r.estimatedCost ? <span className="text-[11px] text-slate-600">Not billed</span> : null)}</div></td>
                 <td className="text-slate-500 text-xs">{new Date(r.createdAt).toLocaleDateString()}</td>
                 <td className="whitespace-nowrap">
                   <button className="btn-ghost text-xs" onClick={() => setTracking(r.id)}>Track</button>

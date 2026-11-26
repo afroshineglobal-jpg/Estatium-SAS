@@ -22,4 +22,13 @@ function append(timeline, entry) {
   return [...list, { at: new Date().toISOString(), status: entry.status, note: entry.note || null, by: entry.by || null }].slice(-MAX_TIMELINE);
 }
 
-module.exports = { STAGES, KEYS, label, FINISHED, append };
+/** Payment state of a request from its invoices (voided / waived ones ignored): NONE | PENDING | PARTIAL | PAID, plus totals. */
+function billingOf(bills) {
+  const live = (bills || []).filter((b) => !['VOID', 'WAIVED'].includes(b.status));
+  if (!live.length) return { status: 'NONE', count: 0, total: 0, paid: 0, overdue: false };
+  const total = live.reduce((s, b) => s + Number(b.amount), 0); const paid = live.reduce((s, b) => s + Number(b.amountPaid), 0);
+  const status = paid >= total - 0.005 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'PENDING';
+  return { status, count: live.length, total: Math.round(total * 100) / 100, paid: Math.round(paid * 100) / 100, overdue: live.some((b) => b.status === 'OVERDUE') };
+}
+
+module.exports = { STAGES, KEYS, label, FINISHED, append, billingOf };

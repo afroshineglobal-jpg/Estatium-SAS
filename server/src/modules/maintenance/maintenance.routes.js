@@ -16,7 +16,10 @@ router.get('/', authenticate, H.wrap(async (req, res) => {
   if (req.user.role === 'RESIDENT') where.userId = req.user.id;
   else if (!['ADMIN', 'MAINTENANCE_MANAGER', 'SECURITY_ADMIN', 'FINANCE_ADMIN'].includes(req.user.role)) throw H.forbidden();
   if (req.query.status) where.status = H.oneOf(req.query.status, STATUSES, 'status');
-  res.json(await prisma.maintenanceRequest.findMany({ where, include: { user: { select: { name: true, phone: true } } }, orderBy: { createdAt: 'desc' }, take: 500 }));
+  const rows = await prisma.maintenanceRequest.findMany({ where, include: { user: { select: { name: true, phone: true } } }, orderBy: { createdAt: 'desc' }, take: 500 });
+  const bills = rows.length ? await prisma.bill.findMany({ where: { sourceType: 'MAINTENANCE_REQUEST' }, select: { sourceId: true, status: true, amount: true, amountPaid: true }, take: 3000 }) : [];
+  const byReq = new Map(); for (const b of bills) { const k = String(b.sourceId).split(':')[0]; (byReq.get(k) || byReq.set(k, []).get(k)).push(b); }
+  res.json(rows.map((r) => ({ ...r, billing: S.billingOf(byReq.get(r.id)) })));
 }));
 
 router.post('/', authenticate, authorize('RESIDENT', 'ADMIN'), H.wrap(async (req, res) => {
@@ -35,7 +38,7 @@ router.get('/:id([0-9a-fA-F-]{36})', authenticate, H.wrap(async (req, res) => {
   if (!r) throw H.notFound('Request');
   const invoices = await prisma.bill.findMany({ where: { sourceType: 'MAINTENANCE_REQUEST', sourceId: { startsWith: r.id } }, orderBy: { createdAt: 'asc' }, select: { id: true, invoiceNo: true, title: true, amount: true, amountPaid: true, status: true, dueDate: true, taxTotal: true, createdAt: true } });
   const { notes, ...pub } = r;                                   // internal notes stay with the managers
-  res.json({ ...(MANAGERS.includes(req.user.role) ? r : pub), stages: S.STAGES, invoices });
+  res.json({ ...(MANAGERS.includes(req.user.role) ? r : pub), stages: S.STAGES, invoices, billing: S.billingOf(invoices) });
 }));
 
 // Only the fields that were actually sent are updated. (Legacy code wrote NULL over estimatedCost/actualCost on every status change.)
