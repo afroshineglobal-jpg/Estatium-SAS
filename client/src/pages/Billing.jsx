@@ -193,7 +193,35 @@ export default function Billing() {
         ))}
       </div>
 
-      <div className="table-container">
+      {/* Phones: one card per invoice, nothing hidden off-screen */}
+      <div className="md:hidden space-y-3">
+        {loading ? <p className="text-center py-10 text-slate-500">Loading...</p> : bills.length === 0 ? <p className="text-center py-10 text-slate-500">No bills found</p> : bills.map(b => (
+          <div key={b.id} className="card p-4 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-200 break-words">{b.title}</p>
+                {b.invoiceNo && <p className="text-xs font-mono text-estate-400">{b.invoiceNo}</p>}
+                {isAdmin && <p className="text-xs text-slate-500 mt-0.5">{b.resident?.user?.name} · {b.resident?.unit?.block?.name}-{b.resident?.unit?.unitNumber}</p>}
+              </div>
+              {statusBadge(b.status)}
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="font-mono text-lg text-slate-100">{fmt(b.amount)}</p>
+                {Number(b.taxTotal) > 0 && <p className="text-[11px] text-slate-500">incl. {(b.taxLines || []).map((t) => `${t.name} ${t.rate}%`).join(', ')}</p>}
+                {Number(b.amountPaid) > 0 && b.status !== 'PAID' && <p className="text-[11px] text-slate-500">paid {fmt(b.amountPaid)}</p>}
+              </div>
+              <p className="text-xs text-slate-500">Due {new Date(b.dueDate).toLocaleDateString()}</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button className="btn-secondary text-xs flex-1" onClick={() => downloadInvoice(b)}><Download size={14} /> Invoice (PDF)</button>
+              {['UNPAID', 'PARTIAL', 'OVERDUE'].includes(b.status) && isAdmin && <button className="btn-primary text-xs flex-1" onClick={() => setPaying(b)}><CheckCircle size={14} /> Pay</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="table-container hidden md:block">
         <table className="table">
           <thead><tr>
             {isAdmin && <th>Resident</th>}
