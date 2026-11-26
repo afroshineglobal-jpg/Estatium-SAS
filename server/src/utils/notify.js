@@ -3,6 +3,7 @@ const prisma = require('../config/prisma');
 const webpush = require('./webpush');
 
 const { kindOf } = webpush;
+const TYPE_URLS = { BILLING: '/billing', PARCEL: '/parcels', MAINTENANCE: '/maintenance', MAINTENANCE_MANAGER: '/maintenance', NOTICE: '/communication', APPROVED: '/', REJECTED: '/' };
 const URLS = { VISITOR: '/visitors', EMERGENCY: '/emergency', MESSAGE: '/communication' };
 
 /** Push to every device the given users enabled notifications on. Never throws; dead devices are forgotten. */
@@ -12,7 +13,7 @@ async function pushToUsers(userIds, title, body, type, data = {}) {
     const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } }, select: { id: true, endpoint: true, p256dh: true, auth: true } });
     if (!subs.length) return;
     const kind = kindOf(type);
-    const payload = { title, body, kind, url: URLS[kind], ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) };
+    const payload = { title, body, kind, url: TYPE_URLS[type] || URLS[kind], ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) };
     const gone = [];
     await Promise.all(subs.map(async (s) => { const r = await webpush.send(s, payload); if (r.gone) gone.push(s.id); }));
     if (gone.length) await prisma.pushSubscription.deleteMany({ where: { id: { in: gone } } });

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Menu, AlertTriangle, X, Volume2 } from 'lucide-react';
 import SoundSettings from '../SoundSettings';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../utils/api';
 
+const NOTIF_PAGE = { VISITOR: '/visitors', EMERGENCY: '/emergency', MESSAGE: '/communication', NOTICE: '/communication', BILLING: '/billing', PARCEL: '/parcels', MAINTENANCE: '/maintenance', MAINTENANCE_MANAGER: '/maintenance' };
+
 export default function Header({ onMenuToggle }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [showSounds, setShowSounds] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -65,7 +69,7 @@ export default function Header({ onMenuToggle }) {
               {notifications.length === 0 ? (
                 <p className="text-center text-slate-500 py-8 text-sm">No notifications</p>
               ) : notifications.map(n => (
-                <div key={n.id} className={`px-4 py-3 border-b border-slate-800/50 ${!n.isRead ? 'bg-estate-950/40' : ''}`}>
+                <div key={n.id} role="button" tabIndex={0} onClick={() => { setShowNotifs(false); navigate(NOTIF_PAGE[n.type] || '/'); }} onKeyDown={(e) => { if (e.key === 'Enter') { setShowNotifs(false); navigate(NOTIF_PAGE[n.type] || '/'); } }} className={`px-4 py-3 border-b border-slate-800/50 cursor-pointer hover:bg-slate-800/40 ${!n.isRead ? 'bg-estate-950/40' : ''}`}>
                   <div className="flex items-start gap-2">
                     {n.type === 'EMERGENCY' && <AlertTriangle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />}
                     <div>
