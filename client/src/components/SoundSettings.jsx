@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { getPrefs, setPrefs, playSound, unlockAudio, stopAlarm } from '../utils/sounds';
 import { enablePush, disablePush, pushPermission, listenForPushSounds } from '../utils/push';
@@ -8,6 +8,7 @@ const ROWS = [['VISITOR', '🔔 Visitors', 'Doorbell "ding-dong" when a visitor 
 /** Per-device sound + notification settings, opened from the speaker icon in the top bar. */
 export default function SoundSettings({ onClose }) {
   const [p, setP] = useState(getPrefs()); const [perm, setPerm] = useState(pushPermission()); const [busy, setBusy] = useState(false);
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   const change = (patch) => { setPrefs(patch); setP(getPrefs()); };
   const test = (k) => { unlockAudio(); if (k === 'EMERGENCY') { playSound('EMERGENCY'); setTimeout(stopAlarm, 2500); } else playSound(k, { force: true }); };
   const turnOn = async () => { setBusy(true); try { await enablePush(); listenForPushSounds(); setPerm('granted'); toast.success('Notifications are on for this device'); } catch (e) { toast.error(e.message || 'Could not turn notifications on'); setPerm(pushPermission()); } finally { setBusy(false); } };
@@ -15,7 +16,7 @@ export default function SoundSettings({ onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-slate-100">Alert sounds</h3><button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl">✕</button></div>
+        <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-4 px-6 py-3 flex items-center justify-between bg-surface-900 border-b border-slate-800"><h3 className="text-lg font-semibold text-slate-100">Alert sounds</h3><button onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 text-lg leading-none">✕</button></div>
         <div className="space-y-3">
           {ROWS.map(([k, label, text]) => (
             <div key={k} className="card p-3 flex items-center gap-3">
@@ -42,6 +43,7 @@ export default function SoundSettings({ onClose }) {
           <p className="text-xs text-slate-500 mt-2">With the app closed, phones play their own notification sound; the app's own sounds above play while it is open. Visitors, emergencies and chat/notices vibrate differently so you can tell them apart.</p>
           {perm === 'granted' && <p className="text-xs text-amber-400/90 mt-3">To keep receiving alerts: do not "Force stop" the app, and set battery to "Unrestricted" for it (Android: Settings → Apps → Estatium → Battery). Swiping it away from recent apps is fine; on iPhone keep it added to the Home Screen.</p>}
         </div>
+        <button className="btn-secondary w-full mt-4" onClick={onClose}>Close</button>
       </div>
     </div>
   );
