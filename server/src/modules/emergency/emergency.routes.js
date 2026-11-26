@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const prisma = require('../../config/prisma');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
-const { notifyByRole, notify } = require('../../utils/notify');
+const { notifyByRole, notify, pushOnly, activeUserIds } = require('../../utils/notify');
 const { rooms } = require('../../realtime');
 const H = require('../../utils/http');
 
@@ -26,6 +26,10 @@ router.post('/', authenticate, H.wrap(async (req, res) => {
     io.to(staffRooms).emit('emergency-alert', { report, user: { name: req.user.name, phone: req.user.phone } });                 // responders get the full picture
     io.to(rooms.tenant(tid)).except(staffRooms).emit('emergency-alert', { report: { type: report.type, description: report.description, location: report.location, severity: report.severity }, user: { name: req.user.name } });
     await Promise.all(['GUARD', 'ADMIN', 'SECURITY_ADMIN'].map((role) => notifyByRole(role, '🚨 EMERGENCY!', `${type} at ${report.location || 'estate'}. ${report.description || ''}`.trim(), 'EMERGENCY', { reportId: report.id })));
+    // Everyone else on the estate (residents, other staff) also gets the siren on their phone; the sender does not.
+    const others = await activeUserIds({ exceptId: req.user.id });
+    const responders = new Set((await prisma.user.findMany({ where: { isActive: true, role: { in: ['GUARD', 'ADMIN', 'SECURITY_ADMIN'] } }, select: { id: true } })).map((u) => u.id));
+    pushOnly(others.filter((id) => !responders.has(id)), '🚨 EMERGENCY!', `${type} at ${report.location || 'the estate'}. ${report.description || ''}`.trim(), 'EMERGENCY', { reportId: report.id });
   } catch (e) { console.error('[emergency] fan-out failed:', e.message); }
 }));
 

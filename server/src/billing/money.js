@@ -1,6 +1,6 @@
 'use strict';
 /** Integer minor-unit money arithmetic (no floating point). All 8 supported currencies use 2 decimals. */
-const DECIMALS = { USD: 2, EUR: 2, GBP: 2, AED: 2, SAR: 2, INR: 2, CAD: 2, AUD: 2, NGN: 2 };
+const DECIMALS = { USD: 2, EUR: 2, GBP: 2, AED: 2, SAR: 2, INR: 2, CAD: 2, AUD: 2, NGN: 2, ZAR: 2, TRY: 2, BRL: 2, UAH: 2, AZN: 2, IQD: 2 };
 const SUPPORTED = ['USD', 'EUR', 'GBP', 'AED', 'SAR', 'INR', 'CAD', 'AUD'];
 const decimals = (cur) => { const d = DECIMALS[cur]; if (d === undefined) throw new Error(`Unsupported currency ${cur}`); return d; };
 

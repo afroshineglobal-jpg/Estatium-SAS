@@ -4,7 +4,7 @@ import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 
-function LogParcelModal({ onClose, onDone, units }) {
+function LogParcelModal({ onClose, onDone, onLogged, units }) {
   const [form, setForm] = useState({ unitId: '', senderName: '', carrier: '', description: '' });
   const [loading, setLoading] = useState(false);
 
@@ -13,8 +13,8 @@ function LogParcelModal({ onClose, onDone, units }) {
     setLoading(true);
     try {
       const p = await api.post('/parcels', form);
-      toast.success(`Parcel logged. OTP: ${p.otp}`);
-      onDone(); onClose();
+      toast.success('Parcel logged. The resident has been notified.');
+      onDone(); onLogged(p);
     } catch {} finally { setLoading(false); }
   };
 
@@ -45,8 +45,54 @@ function LogParcelModal({ onClose, onDone, units }) {
   );
 }
 
-function CollectModal({ parcel, onClose, onDone }) {
-  const [otp, setOtp] = useState('');
+function LoggedModal({ parcel, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <p className="text-slate-400 text-sm">Parcel logged for flat</p>
+        <p className="text-4xl font-bold text-estate-300 my-2">{parcel.flat}</p>
+        {parcel.residentNames?.length > 0 && <p className="text-slate-300 text-sm">{parcel.residentNames.join(', ')}</p>}
+        <p className="text-slate-500 text-xs mt-3">OTP (also sent to the resident)</p>
+        <p className="font-mono text-3xl tracking-widest text-amber-300">{parcel.otp}</p>
+        <button className="btn-primary w-full mt-5" onClick={onClose}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+function MyOtpModal({ parcel, onClose }) {
+  const [otp, setOtp] = useState(null); const [busy, setBusy] = useState(false);
+  const get = async () => { setBusy(true); try { setOtp((await api.post(`/parcels/${parcel.id}/otp`)).otp); } catch { /* toast */ } finally { setBusy(false); } };
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-100 mb-1">Your parcel OTP</h3>
+        <p className="text-slate-400 text-sm mb-4">From {parcel.senderName || parcel.carrier || 'an unknown sender'}. Read this code to the guard to collect it.</p>
+        {otp ? <p className="font-mono text-4xl tracking-widest text-amber-300 mb-2">{otp}</p>
+          : <button className="btn-primary" onClick={get} disabled={busy}>{busy ? '...' : 'Show my OTP'}</button>}
+        {otp && <p className="text-xs text-slate-500">This is a new code. Any earlier OTP for this parcel no longer works.</p>}
+        <button className="btn-secondary w-full mt-4" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function OtpLookup({ onFound }) {
+  const [otp, setOtp] = useState(''); const [busy, setBusy] = useState(false);
+  const find = async () => { if (!otp) return; setBusy(true); try { const p = await api.post('/parcels/lookup', { otp: otp.trim() }); onFound({ ...p, _otp: otp.trim() }); setOtp(''); } catch { /* toast */ } finally { setBusy(false); } };
+  return (
+    <div className="card p-4">
+      <p className="text-sm font-semibold text-slate-200 mb-2">Resident gives you an OTP?</p>
+      <div className="flex gap-2">
+        <input className="input font-mono tracking-widest text-center" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.key === 'Enter' && find()} placeholder="Enter OTP" maxLength={6} inputMode="numeric" />
+        <button className="btn-primary" onClick={find} disabled={busy || !otp}>{busy ? '...' : 'Find parcel'}</button>
+      </div>
+    </div>
+  );
+}
+
+function CollectModal({ parcel, onClose, onDone, presetOtp = '' }) {
+  const [otp, setOtp] = useState(presetOtp);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -62,6 +108,8 @@ function CollectModal({ parcel, onClose, onDone }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal p-6" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-slate-100 mb-2">Collect Parcel</h3>
+        <p className="text-3xl font-bold text-estate-300 mb-1">Flat {parcel.flat}</p>
+        {parcel.residentNames?.length > 0 && <p className="text-slate-300 text-sm">{parcel.residentNames.join(', ')}</p>}
         <p className="text-slate-400 text-sm mb-4">{parcel.senderName ? `From: ${parcel.senderName}` : 'Enter OTP to confirm collection'}</p>
         <div>
           <label className="label">OTP (sent to resident)</label>
@@ -83,6 +131,10 @@ export function Parcels() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [collecting, setCollecting] = useState(null);
+  const [logged, setLogged] = useState(null);
+  const [myOtp, setMyOtp] = useState(null);
+  const [found, setFound] = useState(null);       // parcel located by OTP at the gate
+  const isGate = ['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role);
 
   const load = async () => {
     try {
@@ -125,6 +177,8 @@ export function Parcels() {
         </div>
       </div>
 
+      {isGate && <OtpLookup onFound={setFound} />}
+
       {/* Pending Parcels */}
       {pending.length > 0 && (
         <div>
@@ -138,16 +192,14 @@ export function Parcels() {
                   </div>
                   <div>
                     <p className="font-medium text-slate-200">{p.senderName || 'Unknown Sender'}</p>
-                    <p className="text-xs text-slate-500">Unit {p.unitId.slice(-8)} · {p.carrier || 'Unknown carrier'}</p>
+                    <p className="text-sm text-estate-300 font-semibold">Flat {p.flat}{p.residentNames?.length ? ` · ${p.residentNames.join(', ')}` : ''}</p>
+                    <p className="text-xs text-slate-500">{p.carrier || 'Unknown carrier'}</p>
                     <p className="text-xs text-slate-600 mt-0.5">{new Date(p.loggedAt).toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-xs text-slate-500">OTP</p>
-                    <p className="font-mono text-estate-300 font-bold">{p.otp}</p>
-                  </div>
-                  {['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role) && (
+                  {user.role === 'RESIDENT' && <button className="btn-primary text-xs" onClick={() => setMyOtp(p)}>Show my OTP</button>}
+                  {isGate && (
                     <button className="btn-primary text-xs" onClick={() => setCollecting(p)}>
                       <CheckCircle size={14} /> Collect
                     </button>
@@ -164,14 +216,15 @@ export function Parcels() {
         <h2 className="text-sm font-semibold text-slate-300 mb-3">Collection History</h2>
         <div className="table-container">
           <table className="table">
-            <thead><tr><th>Sender</th><th>Carrier</th><th>Logged</th><th>Collected</th><th>Status</th></tr></thead>
+            <thead><tr><th>Flat</th><th>Sender</th><th>Carrier</th><th>Logged</th><th>Collected</th><th>Status</th></tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-500">Loading...</td></tr>
               ) : parcels.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-500">No parcels yet</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-500">No parcels yet</td></tr>
               ) : parcels.slice(0, 30).map(p => (
                 <tr key={p.id}>
+                  <td className="font-mono text-estate-300">{p.flat}</td>
                   <td className="font-medium text-slate-200">{p.senderName || '—'}</td>
                   <td className="text-slate-400">{p.carrier || '—'}</td>
                   <td className="text-slate-500 text-xs">{new Date(p.loggedAt).toLocaleString()}</td>
@@ -184,7 +237,10 @@ export function Parcels() {
         </div>
       </div>
 
-      {modal === 'log' && <LogParcelModal onClose={() => setModal(null)} onDone={load} units={units} />}
+      {modal === 'log' && <LogParcelModal onClose={() => setModal(null)} onDone={load} onLogged={(p) => { setModal(null); setLogged(p); }} units={units} />}
+      {logged && <LoggedModal parcel={logged} onClose={() => setLogged(null)} />}
+      {myOtp && <MyOtpModal parcel={myOtp} onClose={() => setMyOtp(null)} />}
+      {found && <CollectModal parcel={found} presetOtp={found._otp} onClose={() => setFound(null)} onDone={load} />}
       {collecting && <CollectModal parcel={collecting} onClose={() => setCollecting(null)} onDone={load} />}
     </div>
   );

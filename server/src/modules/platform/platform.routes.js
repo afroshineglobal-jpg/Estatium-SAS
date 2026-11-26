@@ -12,6 +12,7 @@ const { platformAuth, requirePerm: need, login, changeOwnPassword, safe } = requ
 const { ROLE_PERMISSIONS, PERMISSIONS } = require('./permissions');
 const T = require('./tenants.service');
 const B = require('./billing.service');
+const PP = require('./prepaid.service');
 const { audit } = require('../../utils/audit');
 const { loginLimiter } = require('../../middleware/security');
 const { setStatus } = T;
@@ -24,24 +25,34 @@ router.use(platformAuth);
 router.get('/auth/me', (req, res) => res.json({ user: safe(req.platformUser), permissions: ROLE_PERMISSIONS[req.platformUser.role], allPermissions: PERMISSIONS }));
 router.post('/auth/password', wrap(changeOwnPassword));
 
+router.use('/tickets', require('./tickets.routes'));  // feedback tickets from estate users (tickets:manage)
+router.use('/ads', require('./ads.routes'));          // advertising: Platform owner only (ads:manage)
+
 // ── tenants ──────────────────────────────────────────────────────────────────
 router.get('/tenants', need('tenants:read'), wrap(async (req, res) => res.json(await T.listTenants({ q: req.query.q, status: req.query.status && oneOf(req.query.status, ['TRIAL', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'DELETED'], 'status'), page: req.query.page, pageSize: req.query.pageSize }))));
 
 router.post('/tenants', need('tenants:create'), wrap(async (req, res) => {
   const out = await T.createTenant(req.body || {}, req.actor, req);
-  if (out.subscription.status === 'ACTIVE') await B.generateInvoice(await B.loadSub(out.tenant.id), { periodStart: out.subscription.currentPeriodStart, periodEnd: out.subscription.currentPeriodEnd });
+  if (out.subscription.status === 'ACTIVE' && out.subscription.billingMode !== 'MANUAL_PREPAID') await B.generateInvoice(await B.loadSub(out.tenant.id), { periodStart: out.subscription.currentPeriodStart, periodEnd: out.subscription.currentPeriodEnd });
   res.status(201).json(out);
+}));
+
+router.get('/estate-code/suggest', need('tenants:create'), wrap(async (req, res) => res.json({ code: await T.suggestEstateCode(str(req.query.name, { max: 120 }) || '') })));
+router.get('/places', need('tenants:read'), wrap(async (req, res) => {          // spellings already used, so forms can suggest them
+  const out = {}; for (const k of ['country', 'state', 'district', 'city', 'area', 'locality']) out[k] = (await db.tenant.findMany({ where: { [k]: { not: null }, status: { not: 'DELETED' } }, distinct: [k], select: { [k]: true }, take: 500 })).map((r) => r[k]).sort();
+  res.json(out);
 }));
 
 router.get('/tenants/:id', need('tenants:read'), wrap(async (req, res) => {
   const t = await T.getTenantOrThrow(req.params.id);
-  const [stats, invoices, events, estimate] = await Promise.all([
+  const [stats, invoices, events, estimate, prepaid] = await Promise.all([
     db.$queryRaw`SELECT * FROM platform_tenant_stats()`,
     db.invoice.findMany({ where: { tenantId: t.id }, orderBy: { issuedAt: 'desc' }, take: 12 }),
     db.subscriptionEvent.findMany({ where: { tenantId: t.id }, orderBy: { createdAt: 'desc' }, take: 25 }),
     ['DELETED'].includes(t.status) ? null : B.estimateNext(t.id).catch(() => null),
+    PP.getPrepaid(t.id).catch(() => null),
   ]);
-  res.json({ ...t, usage: stats.find((s) => s.tenantId === t.id) || { units: 0, residents: 0, users: 0 }, invoices, events, nextInvoiceEstimate: estimate });
+  res.json({ ...t, usage: stats.find((s) => s.tenantId === t.id) || { units: 0, residents: 0, users: 0 }, invoices, events, nextInvoiceEstimate: estimate, prepaid });
 }));
 
 router.patch('/tenants/:id', need('tenants:update'), wrap(async (req, res) => res.json(await T.updateTenant(req.params.id, req.body || {}, req.actor, req))));
@@ -49,6 +60,7 @@ router.post('/tenants/:id/suspend', need('tenants:suspend'), wrap(async (req, re
 router.post('/tenants/:id/expire', need('tenants:suspend'), wrap(async (req, res) => res.json(await setStatus(req.params.id, 'EXPIRED', { reason: str(req.body?.reason, { max: 200 }) || 'EXPIRED_BY_PLATFORM', actor: req.actor, req }))));
 router.post('/tenants/:id/activate', need('tenants:activate'), wrap(async (req, res) => {
   const t = await T.getTenantOrThrow(req.params.id);
+  if ((await B.loadSub(t.id)).billingMode === 'MANUAL_PREPAID') return res.json(await setStatus(t.id, 'ACTIVE', { reason: 'ACTIVATED_BY_PLATFORM', actor: req.actor, req }));   // no invoices in manual prepaid mode
   if (t.status === 'TRIAL') return res.json(await B.convertTrial(t.id, { actor: req.actor, req }));       // first invoice is issued
   const out = await setStatus(t.id, 'ACTIVE', { reason: 'ACTIVATED_BY_PLATFORM', actor: req.actor, req });
   const sub = await B.loadSub(t.id);
@@ -61,6 +73,13 @@ router.post('/tenants/:id/activate', need('tenants:activate'), wrap(async (req, 
 }));
 router.post('/tenants/:id/restore', need('tenants:delete'), wrap(async (req, res) => res.json(await setStatus(req.params.id, 'SUSPENDED', { reason: 'RESTORED_BY_PLATFORM', actor: req.actor, req }))));
 router.delete('/tenants/:id', need('tenants:delete'), wrap(async (req, res) => res.json(await T.deleteTenant(req.params.id, { confirmSlug: req.body?.confirmSlug, actor: req.actor, req }))));
+// ── manual prepaid payments (pilot) ──────────────────────────────────────────
+router.get('/tenants/:id/prepaid', need('subscriptions:read'), wrap(async (req, res) => res.json(await PP.getPrepaid(req.params.id))));
+router.post('/tenants/:id/prepaid/payments', need('subscriptions:update'), wrap(async (req, res) => res.status(201).json(await PP.recordPayment(req.params.id, req.body || {}, req.actor, req))));
+router.post('/tenants/:id/prepaid/payments/:paymentId/void', need('subscriptions:update'), wrap(async (req, res) => res.json(await PP.voidPayment(req.params.id, req.params.paymentId, req.body?.reason, req.actor, req))));
+router.patch('/tenants/:id/prepaid/grace', need('subscriptions:update'), wrap(async (req, res) => res.json(await PP.setGraceDays(req.params.id, req.body?.graceDays, req.actor, req))));
+
+router.get('/tenants/:id/admins', need('tenants:read'), wrap(async (req, res) => res.json(await T.listAdmins(req.params.id))));
 router.post('/tenants/:id/reset-admin-password', need('tenants:update'), wrap(async (req, res) => res.json(await T.resetAdminPassword(req.params.id, req.body?.email, req.actor, req))));
 
 // ── subscription management ──────────────────────────────────────────────────

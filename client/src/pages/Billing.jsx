@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, CreditCard, CheckCircle, Clock, AlertCircle, TrendingUp } from 'lucide-react';
+import { Plus, CreditCard, CheckCircle, Clock, AlertCircle, TrendingUp, Download } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import { fmt, symbol } from '../utils/money';
+import { downloadInvoice } from '../utils/invoice';
+
+const CAT = { MAINTENANCE: 'MAINTENANCE', AMENITY: 'AMENITY', UTILITY: 'OTHER', PENALTY: 'OTHER', ONE_TIME: 'OTHER' };
 
 const statusBadge = (s) => {
   const map = { PAID: 'badge-green', UNPAID: 'badge-yellow', OVERDUE: 'badge-red', WAIVED: 'badge-gray' };
@@ -14,6 +17,11 @@ function AddBillModal({ onClose, onDone, residents }) {
   const [form, setForm] = useState({ residentId: '', title: '', amount: '', dueDate: '', type: 'MAINTENANCE', description: '' });
   const [isBulk, setIsBulk] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cfg, setCfg] = useState(null);
+  useEffect(() => { api.get('/settings').then((s) => setCfg(s.billing_config)).catch(() => {}); }, []);
+  const taxes = cfg?.taxes?.[CAT[form.type]] || [];
+  const rate = taxes.reduce((s, t) => s + Number(t.rate || 0), 0);
+  const base = Number(form.amount) || 0;
 
   const submit = async () => {
     if (!form.title || !form.amount || !form.dueDate) return toast.error('Title, amount and due date required');
@@ -53,6 +61,7 @@ function AddBillModal({ onClose, onDone, residents }) {
           )}
           <div><label className="label">Bill Title *</label><input className="input" value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="e.g. Monthly Maintenance Levy" /></div>
           <div><label className="label">Amount ({symbol()}) *</label><input type="number" className="input" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="15000" /></div>
+          {taxes.length > 0 && base > 0 && <p className="text-xs text-slate-400 -mt-1">{taxes.map((t) => `${t.name} ${t.rate}%`).join(' + ')} will be added: total <b className="text-slate-200">{fmt(Math.round(base * (1 + rate / 100) * 100) / 100)}</b></p>}
           <div><label className="label">Due Date *</label><input type="date" className="input" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} /></div>
           <div>
             <label className="label">Type</label>
@@ -72,7 +81,7 @@ function AddBillModal({ onClose, onDone, residents }) {
 }
 
 function PaymentModal({ bill, onClose, onDone }) {
-  const [form, setForm] = useState({ amount: bill.amount, method: 'CASH', reference: '', notes: '' });
+  const [form, setForm] = useState({ amount: Number(bill.amount) - Number(bill.amountPaid || 0), method: 'CASH', reference: '', notes: '' });
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -177,11 +186,39 @@ export default function Billing() {
         ))}
       </div>
 
-      <div className="table-container">
+      {/* Phones: one card per invoice, nothing hidden off-screen */}
+      <div className="md:hidden space-y-3">
+        {loading ? <p className="text-center py-10 text-slate-500">Loading...</p> : bills.length === 0 ? <p className="text-center py-10 text-slate-500">No bills found</p> : bills.map(b => (
+          <div key={b.id} className="card p-4 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-200 break-words">{b.title}</p>
+                {b.invoiceNo && <p className="text-xs font-mono text-estate-400">{b.invoiceNo}</p>}
+                {isAdmin && <p className="text-xs text-slate-500 mt-0.5">{b.resident?.user?.name} · {b.resident?.unit?.block?.name}-{b.resident?.unit?.unitNumber}</p>}
+              </div>
+              {statusBadge(b.status)}
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="font-mono text-lg text-slate-100">{fmt(b.amount)}</p>
+                {Number(b.taxTotal) > 0 && <p className="text-[11px] text-slate-500">incl. {(b.taxLines || []).map((t) => `${t.name} ${t.rate}%`).join(', ')}</p>}
+                {Number(b.amountPaid) > 0 && b.status !== 'PAID' && <p className="text-[11px] text-slate-500">paid {fmt(b.amountPaid)}</p>}
+              </div>
+              <p className="text-xs text-slate-500">Due {new Date(b.dueDate).toLocaleDateString()}</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button className="btn-secondary text-xs flex-1" onClick={() => downloadInvoice(b)}><Download size={14} /> Invoice (PDF)</button>
+              {['UNPAID', 'PARTIAL', 'OVERDUE'].includes(b.status) && isAdmin && <button className="btn-primary text-xs flex-1" onClick={() => setPaying(b)}><CheckCircle size={14} /> Pay</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="table-container hidden md:block">
         <table className="table">
           <thead><tr>
             {isAdmin && <th>Resident</th>}
-            <th>Bill</th><th>Type</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Actions</th>
+            <th>Invoice</th><th>Type</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Actions</th>
           </tr></thead>
           <tbody>
             {loading ? (
@@ -198,14 +235,18 @@ export default function Billing() {
                 )}
                 <td>
                   <p className="font-medium text-slate-200">{b.title}</p>
+                  {b.invoiceNo && <p className="text-xs font-mono text-estate-400">{b.invoiceNo}</p>}
                   {b.description && <p className="text-xs text-slate-500">{b.description}</p>}
                 </td>
                 <td><span className="badge-gray text-xs">{b.type}</span></td>
-                <td className="font-mono text-slate-200">{fmt(b.amount)}</td>
+                <td className="font-mono text-slate-200">{fmt(b.amount)}
+                  {Number(b.taxTotal) > 0 && <p className="text-[11px] text-slate-500 font-sans">incl. {(b.taxLines || []).map((t) => `${t.name} ${t.rate}%`).join(', ')}</p>}
+                  {Number(b.amountPaid) > 0 && b.status !== 'PAID' && <p className="text-[11px] text-slate-500 font-sans">paid {fmt(b.amountPaid)}</p>}</td>
                 <td className="text-slate-500 text-sm">{new Date(b.dueDate).toLocaleDateString()}</td>
                 <td>{statusBadge(b.status)}</td>
                 <td>
-                  {b.status === 'UNPAID' && isAdmin && (
+                  <button className="btn-ghost text-xs text-slate-300" title="Download invoice (PDF)" onClick={() => downloadInvoice(b)}><Download size={14} /> Invoice</button>
+                  {['UNPAID', 'PARTIAL', 'OVERDUE'].includes(b.status) && isAdmin && (
                     <button className="btn-ghost text-xs text-estate-400" onClick={() => setPaying(b)}>
                       <CheckCircle size={14} /> Pay
                     </button>

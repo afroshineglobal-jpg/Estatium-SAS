@@ -1,5 +1,6 @@
 'use strict';
 /** Pure tenant / subscription lifecycle rules (unit-tested, no I/O). */
+const { prepaidState, DEFAULT_GRACE_DAYS } = require('../billing/prepaid');
 const TENANT_STATUSES = ['TRIAL', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'DELETED'];
 
 const TRANSITIONS = {
@@ -36,17 +37,29 @@ function tenantPatchFor(to, { now = new Date(), reason = null, retentionDays = 3
 /** What a tenant may do right now. Returns { allow } or { allow:false, status, code, message }. */
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 const ALWAYS_OK = [/^\/api\/auth(\/|$)/, /^\/api\/subscription(\/|$)/, /^\/api\/public(\/|$)/, /^\/api\/health$/];
+function readOnlyDecision(status, method, path, { code, message }) {
+  if (SAFE.has(method)) return { allow: true, effectiveStatus: status, readOnly: true };
+  if (method === 'POST' && /^\/api\/emergency\/?$/.test(path)) return { allow: true, effectiveStatus: status, readOnly: true };   // SOS must always work
+  return { allow: false, status: 403, code, message };
+}
+const PREPAID_READONLY = { code: 'PAYMENT_OVERDUE_READ_ONLY', message: 'This estate is in read-only mode because its subscription is overdue. Viewing and emergency alerts still work. Contact your administrator.' };
+
 function evaluateAccess(tenant, now, method, path) {
+  const prepaid = tenant.billingMode === 'MANUAL_PREPAID';
   let status = tenant.status;
-  if (status === 'TRIAL' && tenant.trialEndsAt && now > new Date(tenant.trialEndsAt)) status = 'EXPIRED';   // lazy expiry between job runs
+  if (!prepaid && status === 'TRIAL' && tenant.trialEndsAt && now > new Date(tenant.trialEndsAt)) status = 'EXPIRED';   // lazy expiry between job runs
   if (status === 'DELETED') return { allow: false, status: 410, code: 'TENANT_DELETED', message: 'This estate account has been deleted.' };
-  if (status === 'TRIAL' || status === 'ACTIVE') return { allow: true, effectiveStatus: status };
-  if (ALWAYS_OK.some((re) => re.test(path))) return { allow: true, effectiveStatus: status };
-  if (status === 'SUSPENDED') {
-    if (SAFE.has(method)) return { allow: true, effectiveStatus: status, readOnly: true };
-    if (method === 'POST' && /^\/api\/emergency\/?$/.test(path)) return { allow: true, effectiveStatus: status, readOnly: true };   // SOS must always work
-    return { allow: false, status: 403, code: 'TENANT_SUSPENDED', message: 'This estate account is suspended (read-only). Contact your administrator.' };
+  if (status === 'TRIAL' || status === 'ACTIVE') {
+    if (!prepaid) return { allow: true, effectiveStatus: status };
+    // Manual prepaid: full access until paid-through (+ grace), then read-only. Never a hard lock-out.
+    const p = prepaidState({ paidThrough: tenant.paidThrough, trialEndsAt: tenant.trialEndsAt, now, graceDays: tenant.prepaidGraceDays ?? DEFAULT_GRACE_DAYS });
+    if (!p.readOnly) return { allow: true, effectiveStatus: status, prepaid: p };
+    if (ALWAYS_OK.some((re) => re.test(path))) return { allow: true, effectiveStatus: status, readOnly: true, prepaid: p };
+    return { ...readOnlyDecision(status, method, path, PREPAID_READONLY), prepaid: p };
   }
+  if (ALWAYS_OK.some((re) => re.test(path))) return { allow: true, effectiveStatus: status };
+  if (status === 'SUSPENDED') return readOnlyDecision(status, method, path, { code: 'TENANT_SUSPENDED', message: 'This estate account is suspended (read-only). Contact your administrator.' });
+  if (prepaid) return readOnlyDecision(status, method, path, PREPAID_READONLY);   // EXPIRED in prepaid mode is still read-only, not a lock-out
   return { allow: false, status: 402, code: 'TENANT_EXPIRED', message: 'This estate subscription has expired. Please renew to continue.' };
 }
 

@@ -1,0 +1,26 @@
+[Unit]
+Description=Estatium API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=estatium
+Group=estatium
+WorkingDirectory=/opt/estatium/app/server
+EnvironmentFile=/etc/estatium/estatium.env
+ExecStart=/usr/bin/node src/app.js
+Restart=always
+RestartSec=3
+# Hardening: the service can only write to its upload folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/estatium
+# Protect the other apps on this server from a runaway process.
+MemoryMax=1G
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

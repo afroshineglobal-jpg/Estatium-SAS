@@ -25,6 +25,9 @@ function buildApp() {
   app.use('/api/platform',       require('./modules/platform/platform.routes'));        // Super Owner portal (separate JWT)
   app.use('/api/auth',           require('./modules/auth/auth.routes'));
   app.use('/api/subscription',   require('./modules/subscription/subscription.routes'));
+  app.use('/api/registrations',  require('./modules/registration/registration.routes'));
+  app.use('/api/exports',        require('./modules/exports/exports.routes'));
+  app.use('/api/push',           require('./modules/push/push.routes'));
   app.use('/api/residents',      require('./modules/residents/residents.routes'));
   app.use('/api/visitors',       require('./modules/visitors/visitors.routes'));
   app.use('/api/parcels',        require('./modules/parcels/parcels.routes'));
@@ -37,9 +40,10 @@ function buildApp() {
   app.use('/api/communication',  require('./modules/communication/communication.routes'));
   app.use('/api/analytics',      require('./modules/analytics/analytics.routes'));
   app.use('/api/advertisements', require('./modules/advertisements/advertisements.routes'));
+  app.use('/api/tickets',        require('./modules/tickets/tickets.routes'));
   app.use('/api/settings',       require('./modules/settings/settings.routes'));
   // NOTE: the unauthenticated POST /api/send-notification test route was removed (anyone could push arbitrary
-  // notifications through your Firebase project). Pushes are sent only by server-side events via utils/notify.js.
+  // notifications through the push service). Pushes are sent only by server-side events via utils/notify.js.
 
   app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 

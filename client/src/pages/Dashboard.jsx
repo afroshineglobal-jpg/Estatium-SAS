@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Users, UserCheck, Package, AlertTriangle, CreditCard, Car, Wrench, Home } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { fmt, symbol } from '../utils/money';
 
-function StatCard({ icon: Icon, label, value, sub, color = 'estate', trend }) {
+function StatCard({ icon: Icon, label, value, sub, color = 'estate', trend, to }) {
   const colors = {
     estate: 'text-estate-400 bg-estate-900/40 border-estate-800/40',
     blue: 'text-blue-400 bg-blue-900/40 border-blue-800/40',
@@ -13,8 +14,9 @@ function StatCard({ icon: Icon, label, value, sub, color = 'estate', trend }) {
     red: 'text-red-400 bg-red-900/40 border-red-800/40',
     purple: 'text-purple-400 bg-purple-900/40 border-purple-800/40',
   };
+  const Wrap = to ? Link : 'div';
   return (
-    <div className="card p-5 animate-fade-in">
+    <Wrap {...(to ? { to } : {})} className={`card p-5 animate-fade-in block ${to ? 'cursor-pointer hover:border-estate-700 transition-colors' : ''}`}>
       <div className="flex items-start justify-between mb-4">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colors[color]}`}>
           <Icon size={20} />
@@ -28,7 +30,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'estate', trend }) {
       <p className="text-2xl font-bold text-slate-100">{value ?? '—'}</p>
       <p className="text-sm text-slate-400 mt-1">{label}</p>
       {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
-    </div>
+    </Wrap>
   );
 }
 
@@ -71,14 +73,14 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Home} label="Occupancy Rate" value={`${stats?.occupancy?.rate ?? 0}%`} sub={`${stats?.occupancy?.occupied} / ${stats?.occupancy?.total} units`} color="estate" />
-        <StatCard icon={Users} label="Residents" value={stats?.residents?.total} sub={`+${stats?.residents?.new} this month`} color="blue" />
-        <StatCard icon={UserCheck} label="Visitors Today" value={stats?.visitors?.today} sub={`${stats?.visitors?.inside} inside now`} color="purple" />
-        <StatCard icon={AlertTriangle} label="Active Emergencies" value={stats?.emergency?.active ?? 0} color="red" />
-        <StatCard icon={CreditCard} label="Collected" value={`${fmt((stats?.billing?.collected || 0))}`} sub={`${fmt((stats?.billing?.outstanding || 0))} outstanding`} color="estate" />
-        <StatCard icon={Package} label="Pending Parcels" value={stats?.parcels?.pending ?? 0} color="amber" />
-        <StatCard icon={Wrench} label="Maintenance Open" value={stats?.maintenance?.pending ?? 0} color="amber" />
-        <StatCard icon={Car} label="This Month Revenue" value={`${fmt((stats?.billing?.thisMonth || 0))}`} color="blue" />
+        <StatCard icon={Home} label="Occupancy Rate" to="/residents" value={`${stats?.occupancy?.rate ?? 0}%`} sub={`${stats?.occupancy?.occupied} / ${stats?.occupancy?.total} units`} color="estate" />
+        <StatCard icon={Users} label="Residents" to="/residents" value={stats?.residents?.total} sub={`+${stats?.residents?.new} this month`} color="blue" />
+        <StatCard icon={UserCheck} label="Visitors Today" to="/visitors" value={stats?.visitors?.today} sub={`${stats?.visitors?.inside} inside now`} color="purple" />
+        <StatCard icon={AlertTriangle} label="Active Emergencies" to="/emergency" value={stats?.emergency?.active ?? 0} color="red" />
+        <StatCard icon={CreditCard} label="Collected" to="/billing" value={`${fmt((stats?.billing?.collected || 0))}`} sub={`${fmt((stats?.billing?.outstanding || 0))} outstanding`} color="estate" />
+        <StatCard icon={Package} label="Pending Parcels" to="/parcels" value={stats?.parcels?.pending ?? 0} color="amber" />
+        <StatCard icon={Wrench} label="Maintenance Open" to="/maintenance" value={stats?.maintenance?.pending ?? 0} color="amber" />
+        <StatCard icon={Car} label="This Month Revenue" to="/billing" value={`${fmt((stats?.billing?.thisMonth || 0))}`} color="blue" />
       </div>
 
       {/* Visitor Trend Chart */}
@@ -112,9 +114,9 @@ function MaintenanceDashboard({ stats }) {
         </div>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard icon={Wrench} label="Open Requests" value={stats?.maintenance?.pending ?? requests.length} color="amber" />
-        <StatCard icon={Users} label="Total Residents" value={stats?.residents?.total} color="blue" />
-        <StatCard icon={Home} label="Occupied Units" value={stats?.occupancy?.occupied} sub={`of ${stats?.occupancy?.total}`} color="estate" />
+        <StatCard icon={Wrench} label="Open Requests" to="/maintenance" value={stats?.maintenance?.pending ?? requests.length} color="amber" />
+        <StatCard icon={Users} label="Total Residents" to="/residents" value={stats?.residents?.total} color="blue" />
+        <StatCard icon={Home} label="Occupied Units" to="/residents" value={stats?.occupancy?.occupied} sub={`of ${stats?.occupancy?.total}`} color="estate" />
       </div>
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-slate-300 mb-4">Open Maintenance Requests</h2>
@@ -139,11 +141,18 @@ function ResidentDashboard() {
   const { user } = useAuth();
   const [bills, setBills] = useState([]);
   const [visitors, setVisitors] = useState([]);
+  const [parcels, setParcels] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
 
   useEffect(() => {
     api.get('/billing').then(setBills).catch(() => {});
     api.get('/visitors').then(setVisitors).catch(() => {});
+    api.get('/parcels').then((r) => setParcels(Array.isArray(r) ? r : [])).catch(() => {});
+    api.get('/vehicles').then((r) => setVehicles(Array.isArray(r) ? r : [])).catch(() => {});
   }, []);
+
+  const waiting = parcels.filter((p) => p.status === 'PENDING');
+  const myVehicles = vehicles.filter((v) => v.status === 'APPROVED');
 
   const unpaidBills = bills.filter(b => b.status === 'UNPAID');
   const recentVisitors = visitors.slice(0, 5);
@@ -157,11 +166,33 @@ function ResidentDashboard() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <StatCard icon={CreditCard} label="Unpaid Bills" value={unpaidBills.length} color={unpaidBills.length > 0 ? 'red' : 'estate'} />
-        <StatCard icon={UserCheck} label="Recent Visitors" value={recentVisitors.length} color="blue" />
+        <StatCard icon={CreditCard} label="Unpaid Bills" to="/billing" value={unpaidBills.length} color={unpaidBills.length > 0 ? 'red' : 'estate'} />
+        <StatCard icon={UserCheck} label="Recent Visitors" to="/visitors" value={recentVisitors.length} color="blue" />
       </div>
+      <Link to="/parcels" className={`card p-4 block hover:border-estate-700 transition-colors ${waiting.length ? 'border-amber-700/60' : ''}`}>
+        <p className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Package size={16} className={waiting.length ? 'text-amber-400' : 'text-slate-500'} /> Parcels at the gate</p>
+        {waiting.length === 0 ? <p className="text-sm text-slate-500 mt-2">No parcel is waiting for you.</p> : (
+          <div className="mt-2 space-y-1.5">
+            <p className="text-sm text-amber-300 font-medium">{waiting.length === 1 ? '1 parcel is waiting at the gate' : `${waiting.length} parcels are waiting at the gate`}. Collect with your OTP.</p>
+            {waiting.slice(0, 5).map((p) => <p key={p.id} className="text-xs text-slate-400">From {p.senderName || p.carrier || 'unknown sender'} · arrived {new Date(p.loggedAt).toLocaleString()}</p>)}
+          </div>
+        )}
+      </Link>
+      <Link to="/vehicles" className="card p-4 block hover:border-estate-700 transition-colors">
+        <p className="text-sm font-semibold text-slate-200 flex items-center gap-2"><Car size={16} className="text-slate-500" /> My vehicles</p>
+        {myVehicles.length === 0 ? <p className="text-sm text-slate-500 mt-2">No approved vehicle yet.</p> : (
+          <div className="mt-2 divide-y divide-slate-800/50">
+            {myVehicles.map((v) => (
+              <div key={v.id} className="flex items-center justify-between py-2">
+                <div><span className="font-mono font-bold text-estate-300">{v.plateNumber}</span><span className="text-xs text-slate-500 ml-2">{[v.make, v.model, v.color].filter(Boolean).join(' ')}</span></div>
+                <span className={`badge ${v.presence === 'INSIDE' ? 'badge-green' : v.presence === 'OUTSIDE' ? 'badge-gray' : 'badge-blue'}`} title={v.presenceSince ? `Since ${new Date(v.presenceSince).toLocaleString()}` : 'No gate record yet'}>{v.presence === 'INSIDE' ? 'In estate' : v.presence === 'OUTSIDE' ? 'Out' : 'No gate record'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Link>
       {unpaidBills.length > 0 && (
-        <div className="card p-4 border-amber-800/40">
+        <Link to="/billing" className="card p-4 border-amber-800/40 block hover:border-amber-600 transition-colors">
           <p className="text-sm font-semibold text-amber-300 mb-3">⚠️ Outstanding Bills</p>
           {unpaidBills.slice(0, 3).map(b => (
             <div key={b.id} className="flex items-center justify-between py-2 border-b border-slate-800/50 last:border-0">
@@ -169,7 +200,7 @@ function ResidentDashboard() {
               <span className="text-sm font-mono text-amber-300">{fmt(b.amount)}</span>
             </div>
           ))}
-        </div>
+        </Link>
       )}
     </div>
   );
@@ -186,9 +217,9 @@ function GuardDashboard() {
     <div className="space-y-6 animate-fade-in">
       <h1 className="page-title">Guard Dashboard</h1>
       <div className="grid grid-cols-3 gap-4">
-        <StatCard icon={UserCheck} label="Today's Visitors" value={vStats.total ?? 0} color="blue" />
-        <StatCard icon={Users} label="Currently Inside" value={vStats.inside ?? 0} color="estate" />
-        <StatCard icon={AlertTriangle} label="Pending Approval" value={vStats.pending ?? 0} color="amber" />
+        <StatCard icon={UserCheck} label="Today's Visitors" to="/visitors" value={vStats.total ?? 0} color="blue" />
+        <StatCard icon={Users} label="Currently Inside" to="/visitors" value={vStats.inside ?? 0} color="estate" />
+        <StatCard icon={AlertTriangle} label="Pending Approval" to="/visitors" value={vStats.pending ?? 0} color="amber" />
       </div>
     </div>
   );

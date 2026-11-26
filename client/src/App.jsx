@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { SocketProvider } from './hooks/useSocket';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import PrepaidBanner from './components/PrepaidBanner';
+import OfflineBanner from './components/OfflineBanner';
 
 // Pages
 import Login from './pages/Login';
@@ -17,12 +19,19 @@ import Billing from './pages/Billing';
 import Vehicles from './pages/Vehicles';
 import Staff from './pages/Staff';
 import Maintenance from './pages/Maintenance';
+import Support from './pages/Support';
 import Emergency from './pages/Emergency';
 import Communication from './pages/Communication';
 import Analytics from './pages/Analytics';
-import Advertisements from './pages/Advertisements';
+import AdBanner from './components/AdBanner';
 import Settings from './pages/Settings';
 import Subscription from './pages/Subscription';
+import Registrations from './pages/Registrations';
+import Exports from './pages/Exports';
+import Register from './pages/Register';
+import UpdateBanner from './components/UpdateBanner';
+import InstallBanner from './components/InstallBanner';
+import AlertSounds from './components/AlertSounds';
 import PlatformApp, { PlatformLogin } from './platform/PlatformApp';
 
 function ProtectedRoute({ children }) {
@@ -84,18 +93,22 @@ function AppLayout() {
   const { user, tenant } = useAuth();
   if (!user) return null;
   if (user.mustChangePassword) return <ChangePassword />;
-  if (tenant?.status === 'EXPIRED') return <ExpiredScreen />;
+  if (tenant?.status === 'EXPIRED' && tenant.billingMode !== 'MANUAL_PREPAID') return <ExpiredScreen />;
 
   return (
     <div className="min-h-screen">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Header onMenuToggle={() => setSidebarOpen(v => !v)} />
       <StatusBanner />
+      <PrepaidBanner />
       <main className="lg:ml-[var(--sidebar-width)] pt-[var(--header-height)]">
         <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+          <AdBanner position="TOP" />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/residents" element={<Residents />} />
+            <Route path="/registrations" element={<Registrations />} />
+            <Route path="/exports" element={<Exports />} />
             <Route path="/visitors" element={<Visitors />} />
             <Route path="/parcels" element={<Parcels />} />
             <Route path="/amenities" element={<Amenities />} />
@@ -106,11 +119,12 @@ function AppLayout() {
             <Route path="/emergency" element={<Emergency />} />
             <Route path="/communication" element={<Communication />} />
             <Route path="/analytics" element={<Analytics />} />
-            <Route path="/advertisements" element={<Advertisements />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <AdBanner position="BOTTOM" />
         </div>
       </main>
     </div>
@@ -126,8 +140,14 @@ export default function App() {
             style: { background: '#1a2420', color: '#e2e8f0', border: '1px solid #1a3a28', borderRadius: '12px' },
             success: { iconTheme: { primary: '#22c55e', secondary: '#0a2e1a' } },
           }} />
+          <OfflineBanner />
+          <UpdateBanner />
+          <InstallBanner />
+          <AlertSounds />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/register/:code" element={<Register />} />
             <Route path="/platform/login" element={<PlatformLogin />} />
             <Route path="/platform/*" element={<PlatformApp />} />
             <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />

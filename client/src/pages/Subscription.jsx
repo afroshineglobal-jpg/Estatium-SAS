@@ -6,6 +6,28 @@ import { fmt } from '../utils/money';
 const badge = { ACTIVE: 'badge-green', TRIAL: 'badge-blue', SUSPENDED: 'badge-yellow', EXPIRED: 'badge-red', CANCELLED: 'badge-gray', PAID: 'badge-green', OPEN: 'badge-yellow', VOID: 'badge-gray' };
 const day = (d) => (d ? new Date(d).toLocaleDateString() : '—');
 
+
+const STATE_LABEL = { UNPAID: 'No payment recorded', ACTIVE: 'Active', APPROACHING: 'Renewal approaching', DUE_SOON: 'Renewal due soon', URGENT: 'Renewal urgent', GRACE: 'Overdue - grace period', READ_ONLY: 'Read-only' };
+const STATE_BADGE = { UNPAID: 'badge-gray', ACTIVE: 'badge-green', APPROACHING: 'badge-blue', DUE_SOON: 'badge-yellow', URGENT: 'badge-yellow', GRACE: 'badge-red', READ_ONLY: 'badge-red' };
+const lastPaid = (e) => (e ? day(new Date(new Date(e).getTime() - 86400000)) : '—');
+
+function PrepaidCard({ p, payments }) {
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-3 flex-wrap"><h3 className="font-semibold text-slate-100">Subscription status</h3><span className={STATE_BADGE[p.state] || 'badge-gray'}>{STATE_LABEL[p.state] || p.state}</span></div>
+      <div className="grid sm:grid-cols-3 gap-4 text-sm">
+        <div><p className="text-xs text-slate-500 uppercase">{p.source === 'TRIAL' ? 'Trial ends' : 'Paid through'}</p><p className="text-lg font-semibold text-slate-100">{lastPaid(p.expiresAt)}</p></div>
+        <div><p className="text-xs text-slate-500 uppercase">{p.daysLeft > 0 ? 'Days left' : 'Grace days left'}</p><p className="text-lg font-semibold text-slate-100">{p.daysLeft > 0 ? p.daysLeft : (p.graceDaysLeft ?? '—')}</p></div>
+        <div><p className="text-xs text-slate-500 uppercase">Read-only from</p><p className="text-lg font-semibold text-slate-100">{p.readOnlyFrom ? day(p.readOnlyFrom) : '—'}</p></div>
+      </div>
+      <p className="text-xs text-slate-500">Payments are recorded by Estatium after your bank transfer is received. After the paid-through date there are {p.graceDays ?? 30} days of normal use; then the estate becomes read-only (viewing and emergency alerts keep working) until payment is recorded.</p>
+      {payments.length > 0 && <div className="table-container"><table className="table"><thead><tr><th>Received</th><th>Covers</th><th>Amount</th><th>Reference</th></tr></thead><tbody>
+        {payments.map((x) => <tr key={x.id}><td className="text-sm">{day(x.paidAt)}</td><td className="text-sm text-slate-400">{day(x.periodFrom)} - {day(x.periodTo)}</td><td className="font-mono">{fmt(x.amount, x.currency)}</td><td className="text-sm">{x.reference || '—'}</td></tr>)}
+      </tbody></table></div>}
+    </div>
+  );
+}
+
 export default function Subscription() {
   const [s, setS] = useState(null);
   useEffect(() => { api.get('/subscription').then(setS).catch(() => {}); }, []);
@@ -14,6 +36,7 @@ export default function Subscription() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="page-header"><div><h1 className="page-title">Subscription</h1><p className="text-slate-400 text-sm">Your Estatium plan and invoices</p></div></div>
+      {s.prepaid && <PrepaidCard p={s.prepaid} payments={s.prepaidPayments || []} />}
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="card p-4"><p className="text-xs text-slate-500 uppercase">Plan</p><p className="text-lg font-semibold text-slate-100">{s.plan.name}</p><span className={`${badge[s.status] || 'badge-gray'} mt-1 inline-block`}>{s.status}</span>
           {s.status === 'TRIAL' && <p className="text-xs text-slate-400 mt-2">Trial ends {day(s.trialEndsAt)}</p>}

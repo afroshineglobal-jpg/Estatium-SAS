@@ -26,5 +26,6 @@ const loginLimiter  = limiter(15 * 60 * 1000, 20, 'Too many login attempts. Try 
   (req) => `${req.ip}|${String(req.body?.tenant || req.headers['x-tenant'] || '').toLowerCase()}|${String(req.body?.email || '').toLowerCase()}`);
 const codeLimiter   = limiter(60 * 1000, 20, 'Too many code attempts. Wait a minute.', (req) => `${req.user?.id || req.ip}`);
 const publicLimiter = limiter(60 * 1000, 60, 'Too many requests.');
+const registrationLimiter = limiter(60 * 60 * 1000, 10, 'Too many registration attempts from this network. Please try again later.');
 
-module.exports = { corsMiddleware, securityHeaders, apiLimiter, loginLimiter, codeLimiter, publicLimiter, originAllowed };
+module.exports = { corsMiddleware, securityHeaders, apiLimiter, loginLimiter, codeLimiter, publicLimiter, registrationLimiter, originAllowed };

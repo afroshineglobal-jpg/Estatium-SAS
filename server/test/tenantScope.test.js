@@ -52,9 +52,10 @@ test('scope: input args are not mutated', () => {
 
 test('tenantModels list == every Prisma model with tenantId + RLS in 002_rls (no drift)', () => {
   const schema = fs.readFileSync(path.join(__dirname, '../prisma/schema.prisma'), 'utf8');
-  const platform = new Set(['Subscription', 'Invoice', 'UsageRecord', 'SubscriptionEvent', 'PlatformPayment', 'AuditLog']);   // carry tenantId but are platform tables
+  const platform = new Set(['Subscription', 'Invoice', 'UsageRecord', 'SubscriptionEvent', 'PlatformPayment', 'PrepaidPayment', 'AuditLog', 'AdCampaignStat', 'Ticket']);   // carry tenantId but are platform tables
   const scoped = [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)].filter(([, n, b]) => /^\s+tenantId\s+String\b/m.test(b) && !platform.has(n)).map(([, n]) => n).sort();
   assert.deepEqual([...MODELS].sort(), scoped);
-  const sql = fs.readFileSync(path.join(__dirname, '../sql/002_rls_and_constraints.sql'), 'utf8');
-  for (const m of scoped) assert.ok(sql.includes(`'${m}'`), `RLS list in sql/002 is missing ${m}`);
+  const dir = path.join(__dirname, '../sql');
+  const sql = fs.readdirSync(dir).filter((n) => /^00[2-9].*\.sql$/.test(n)).map((n) => fs.readFileSync(path.join(dir, n), 'utf8')).join('\n');
+  for (const m of scoped) assert.ok(sql.includes(`'${m}'`) || sql.includes(`"${m}" ENABLE ROW LEVEL SECURITY`), `RLS is not enabled for ${m} in any sql migration`);
 });

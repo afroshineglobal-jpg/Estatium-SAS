@@ -12,7 +12,8 @@ const { audit } = require('../../utils/audit');
 const DUMMY_HASH = bcrypt.hashSync('timing-equaliser-not-a-real-password', 12);
 const MAX_FAILS = 5, LOCK_MINUTES = 15;
 const safeUser = ({ password, fcmToken, failedLogins, lockedUntil, ...u }) => u;          // eslint-disable-line no-unused-vars
-const publicTenant = (t, access) => ({ id: t.id, slug: t.slug, name: t.name, currency: t.currency, timezone: t.timezone, status: access?.effectiveStatus || t.status, readOnly: !!access?.readOnly, trialEndsAt: t.trialEndsAt });
+const publicTenant = (t, access) => ({ id: t.id, slug: t.slug, name: t.name, currency: t.currency, timezone: t.timezone, status: access?.effectiveStatus || t.status, readOnly: !!access?.readOnly, trialEndsAt: t.trialEndsAt, billingMode: t.billingMode || null,
+  prepaid: access?.prepaid ? { state: access.prepaid.state, source: access.prepaid.source, daysLeft: access.prepaid.daysLeft, graceDaysLeft: access.prepaid.graceDaysLeft, readOnly: access.prepaid.readOnly, expiresAt: access.prepaid.expiresAt, readOnlyFrom: access.prepaid.readOnlyFrom } : null });
 
 /** Tenant is chosen by (in order): body.tenant, X-Tenant header, or the sub-domain when TENANT_BASE_DOMAIN is set. */
 function resolveSlug(req) {
