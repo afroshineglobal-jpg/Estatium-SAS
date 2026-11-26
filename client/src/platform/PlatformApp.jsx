@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { platformApi as api, PLATFORM_TOKEN_KEY } from '../utils/api';
 import { fmt } from '../utils/money';
 import PlaceFields from './PlaceFields';
+import TargetPicker, { emptyTargeting, hasTargets } from './TargetPicker';
 
 const day = (d) => (d ? new Date(d).toLocaleDateString() : '—');
 const stBadge = { ACTIVE: 'badge-green', TRIAL: 'badge-blue', SUSPENDED: 'badge-yellow', EXPIRED: 'badge-red', DELETED: 'badge-gray', PAID: 'badge-green', OPEN: 'badge-yellow', VOID: 'badge-gray' };
@@ -343,11 +344,11 @@ function pictureToDataUri(file) {
 }
 
 function Ads({ me }) {
-  const [ads, setAds] = useState(null); const [tenants, setTenants] = useState([]);
-  const blank = { tenantId: 'ALL', placement: 'TOP', pages: [], title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
-  const [f, setF] = useState(blank); const [busy, setBusy] = useState(false);
+  const [ads, setAds] = useState(null); const [stats, setStats] = useState(null);
+  const blank = { placement: 'TOP', pages: [], title: '', content: '', advertiserName: '', linkUrl: '', imageUrl: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' };
+  const [f, setF] = useState(blank); const [target, setTarget] = useState(emptyTargeting()); const [busy, setBusy] = useState(false);
   const load = () => api.get('/ads').then(setAds).catch(() => setAds([]));
-  useEffect(() => { load(); api.get('/tenants').then((d) => setTenants((d.items || d || []).filter((t) => ['TRIAL', 'ACTIVE'].includes(t.status)))).catch(() => {}); }, []);
+  useEffect(() => { load(); }, []);
   if (!can(me, 'ads:manage')) return <p className="text-slate-400">Only the platform owner can manage ads.</p>;
   const PAGE_LIST = [['/', 'Dashboard'], ['/visitors', 'Visitors'], ['/parcels', 'Parcels'], ['/vehicles', 'Vehicles'], ['/billing', 'Billing'], ['/communication', 'Communication'], ['/maintenance', 'Maintenance'], ['/amenities', 'Amenities'], ['/emergency', 'Emergency'], ['/residents', 'Residents'], ['/staff', 'Staff'], ['/analytics', 'Analytics'], ['/subscription', 'Subscription'], ['/settings', 'Settings']];
   const togglePage = (p) => setF({ ...f, pages: f.pages.includes(p) ? f.pages.filter((x) => x !== p) : [...f.pages, p] });
@@ -361,17 +362,18 @@ function Ads({ me }) {
     } catch (x) { toast.error(x.message); } };
   const create = async () => {
     if (!f.title || !f.endDate) return toast.error('Title and end date are required');
+    if (!hasTargets(target)) return toast.error('Choose where the banner should run');
     setBusy(true);
-    try { const r = await api.post('/ads', { ...f, linkUrl: f.linkUrl || undefined, imageUrl: f.imageUrl || undefined }); toast.success(`Ad published to ${r.created} estate${r.created === 1 ? '' : 's'}`); setF(blank); load(); }
+    try { const r = await api.post('/ads', { ...f, linkUrl: f.linkUrl || undefined, imageUrl: f.imageUrl || undefined, targeting: target }); toast.success(`Banner published: ${r.reach.estates} estate${r.reach.estates === 1 ? '' : 's'}, ${r.reach.flats} flat${r.reach.flats === 1 ? '' : 's'}`); setF(blank); setTarget(emptyTargeting()); load(); }
     catch { /* toast */ } finally { setBusy(false); }
   };
-  const stop = async (a) => { if (!confirm(`Stop "${a.title}" for ${a.tenantName}?`)) return; try { await api.post(`/ads/${a.id}/stop`, { tenantId: a.tenantId }); load(); } catch { /* toast */ } };
-  const del = async (a) => { if (!confirm(`Delete "${a.title}" for ${a.tenantName}? Its view and click counts are lost.`)) return; try { await api.delete(`/ads/${a.id}?tenantId=${a.tenantId}`); load(); } catch { /* toast */ } };
-  const state = (a) => { const now = new Date(); if (a.status !== 'APPROVED' || !a.isActive) return ['Stopped', 'badge-gray']; if (new Date(a.startDate) > now) return ['Scheduled', 'badge-blue']; if (new Date(a.endDate) < now) return ['Ended', 'badge-gray']; return ['Live', 'badge-green']; };
-  return (<div className="space-y-5"><div><h1 className="page-title">Ads & banners</h1><p className="text-sm text-slate-500">Only you can create ads. They show as a banner at the top of every page for everyone in the estate.</p></div>
-    <div className="card p-4 space-y-3"><h3 className="font-semibold">New banner</h3>
+  const stop = async (a) => { if (!confirm(`Stop "${a.title}"?`)) return; try { await api.post(`/ads/${a.id}/stop`); load(); } catch { /* toast */ } };
+  const del = async (a) => { if (!confirm(`Delete "${a.title}"? Its view and tap counts are lost.`)) return; try { await api.delete(`/ads/${a.id}`); load(); } catch { /* toast */ } };
+  const showStats = async (a) => { try { setStats({ ad: a, rows: await api.get(`/ads/${a.id}/stats`) }); } catch { /* toast */ } };
+  const state = (a) => { const now = new Date(); if (a.status !== 'ACTIVE') return ['Stopped', 'badge-gray']; if (new Date(a.startDate) > now) return ['Scheduled', 'badge-blue']; if (new Date(a.endDate) < now) return ['Ended', 'badge-gray']; return ['Live', 'badge-green']; };
+  return (<div className="space-y-5"><div><h1 className="page-title">Ads & banners</h1><p className="text-sm text-slate-500">Only you can create ads. Residents see them as a banner at the top or bottom of the pages you choose, only where you target them.</p></div>
+    <div className="card p-4 space-y-4"><h3 className="font-semibold">New banner</h3>
       <div className="grid sm:grid-cols-2 gap-3">
-        <div><label className="label">Show in</label><select className="input" value={f.tenantId} onChange={(e) => setF({ ...f, tenantId: e.target.value })}><option value="ALL">All live estates</option>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
         <div><label className="label">Position</label><select className="input" value={f.placement} onChange={(e) => setF({ ...f, placement: e.target.value })}><option value="TOP">Top of the page</option><option value="BOTTOM">Bottom of the page (several rotate)</option></select></div>
         <div><label className="label">Title *</label><input className="input" maxLength={160} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
         <div className="sm:col-span-2"><label className="label">Text (optional if you add a picture)</label><textarea className="input" rows={2} maxLength={2000} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} /></div>
@@ -383,13 +385,21 @@ function Ads({ me }) {
         <div className="sm:col-span-2"><label className="label">Banner picture: JPG, PNG or animated GIF (GIF up to 450 KB; wide image works best)</label><input type="file" accept="image/*" onChange={pick} className="text-sm" />
           {f.imageUrl && <div className="mt-2"><img src={f.imageUrl} alt="preview" className="max-h-32 rounded-lg border border-slate-700" /><button className="btn-ghost text-xs text-red-400" onClick={() => setF({ ...f, imageUrl: '' })}>Remove picture</button></div>}</div>
       </div>
+      <div><h4 className="font-medium mb-2">Where should it run?</h4><TargetPicker value={target} onChange={setTarget} /></div>
       <button className="btn-primary" disabled={busy} onClick={create}>{busy ? 'Publishing…' : 'Publish banner'}</button></div>
-    <div className="table-container"><table className="table"><thead><tr><th>Banner</th><th>Where</th><th>Estate</th><th>Runs</th><th>Status</th><th>Views</th><th>Taps</th><th /></tr></thead><tbody>
+    <div className="table-container"><table className="table"><thead><tr><th>Banner</th><th>Where on the page</th><th>Runs in</th><th>Dates</th><th>Status</th><th>Views</th><th>Taps</th><th /></tr></thead><tbody>
       {!ads ? <tr><td colSpan={8} className="text-center py-8 text-slate-500">Loading…</td></tr> : ads.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-slate-500">No ads yet</td></tr> : ads.map((a) => { const [label, cls] = state(a); return (
-        <tr key={a.tenantId + a.id}><td><p className="font-medium text-slate-200">{a.title}</p><p className="text-xs text-slate-500">{a.advertiserName}{a.imageUrl ? ' · picture' : ''}</p></td><td className="text-xs text-slate-400">{a.placement === 'BOTTOM' ? 'Bottom' : 'Top'} · {a.pages ? a.pages.split(',').map((p) => (PAGE_LIST.find((x) => x[0] === p) || [p, p])[1]).join(', ') : 'All pages'}</td><td className="text-sm">{a.tenantName}</td>
+        <tr key={a.id}><td><p className="font-medium text-slate-200">{a.title}</p><p className="text-xs text-slate-500">{a.advertiserName}{a.imageUrl ? ' · picture' : ''}</p></td>
+          <td className="text-xs text-slate-400">{a.placement === 'BOTTOM' ? 'Bottom' : 'Top'} · {a.pages ? a.pages.split(',').map((p) => (PAGE_LIST.find((x) => x[0] === p) || [p, p])[1]).join(', ') : 'All pages'}</td>
+          <td className="text-xs text-slate-300">{a.targetSummary}</td>
           <td className="text-xs text-slate-400 whitespace-nowrap">{day(a.startDate)} – {day(a.endDate)}</td><td><span className={`badge ${cls}`}>{label}</span></td><td>{a.impressions}</td><td>{a.clicks}</td>
-          <td className="whitespace-nowrap">{label === 'Live' || label === 'Scheduled' ? <button className="btn-ghost text-xs text-amber-400" onClick={() => stop(a)}>Stop</button> : null}<button className="btn-ghost text-xs text-red-400" onClick={() => del(a)}>Delete</button></td></tr>); })}
-    </tbody></table></div></div>);
+          <td className="whitespace-nowrap"><button className="btn-ghost text-xs" onClick={() => showStats(a)}>By estate</button>{label === 'Live' || label === 'Scheduled' ? <button className="btn-ghost text-xs text-amber-400" onClick={() => stop(a)}>Stop</button> : null}<button className="btn-ghost text-xs text-red-400" onClick={() => del(a)}>Delete</button></td></tr>); })}
+    </tbody></table></div>
+    {stats && <div className="modal-overlay" onClick={() => setStats(null)}><div className="modal p-6" onClick={(e) => e.stopPropagation()}>
+      <h3 className="text-lg font-semibold mb-3">{stats.ad.title}: by estate</h3>
+      {stats.rows.length === 0 ? <p className="text-sm text-slate-500">No views yet.</p> : <table className="table"><thead><tr><th>Estate</th><th>Views</th><th>Taps</th></tr></thead><tbody>{stats.rows.map((r) => <tr key={r.estate}><td>{r.estate}</td><td>{r.impressions}</td><td>{r.clicks}</td></tr>)}</tbody></table>}
+      <button className="btn-secondary w-full mt-4" onClick={() => setStats(null)}>Close</button></div></div>}
+  </div>);
 }
 
 function Audit() {

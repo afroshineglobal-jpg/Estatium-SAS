@@ -52,7 +52,7 @@ test('scope: input args are not mutated', () => {
 
 test('tenantModels list == every Prisma model with tenantId + RLS in 002_rls (no drift)', () => {
   const schema = fs.readFileSync(path.join(__dirname, '../prisma/schema.prisma'), 'utf8');
-  const platform = new Set(['Subscription', 'Invoice', 'UsageRecord', 'SubscriptionEvent', 'PlatformPayment', 'PrepaidPayment', 'AuditLog']);   // carry tenantId but are platform tables
+  const platform = new Set(['Subscription', 'Invoice', 'UsageRecord', 'SubscriptionEvent', 'PlatformPayment', 'PrepaidPayment', 'AuditLog', 'AdCampaignStat']);   // carry tenantId but are platform tables
   const scoped = [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)].filter(([, n, b]) => /^\s+tenantId\s+String\b/m.test(b) && !platform.has(n)).map(([, n]) => n).sort();
   assert.deepEqual([...MODELS].sort(), scoped);
   const dir = path.join(__dirname, '../sql');

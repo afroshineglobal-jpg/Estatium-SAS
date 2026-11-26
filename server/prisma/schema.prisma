@@ -1126,3 +1126,37 @@ model PushSubscription {
 
   @@index([tenantId, userId])
 }
+
+/// Platform-level ad campaign (012_ad_campaigns.sql). NOT tenant-scoped: targeting decides which estates / flats see it.
+model AdCampaign {
+  id             String   @id @default(uuid())
+  title          String
+  content        String?
+  imageUrl       String?
+  linkUrl        String?
+  advertiserName String?
+  placement      String   @default("TOP")          // TOP | BOTTOM
+  pages          String?                            // NULL = every page, else comma-separated app paths
+  startDate      DateTime
+  endDate        DateTime
+  status         String   @default("ACTIVE")        // ACTIVE | STOPPED
+  targeting      Json     @default("{}")
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  stats          AdCampaignStat[]
+
+  @@index([status, startDate, endDate])
+}
+
+model AdCampaignStat {
+  campaignId  String
+  campaign    AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tenantId    String
+  impressions Int        @default(0)
+  clicks      Int        @default(0)
+
+  @@id([campaignId, tenantId])
+}
