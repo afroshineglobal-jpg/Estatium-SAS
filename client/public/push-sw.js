@@ -21,10 +21,15 @@ self.addEventListener('push', (event) => {
     wins.forEach((c) => c.postMessage({ type: 'PLAY_SOUND', kind }));
     // An app window that is open and in front already shows the alert itself; otherwise show a system notification.
     if (wins.some((c) => c.visibilityState === 'visible' && c.focused)) return;
+    const waiting = kind === 'VISITOR' && !!d.visitorId;      // a visitor at the gate waiting for a decision: stays up to 60 s
     await self.registration.showNotification(d.title || 'Estatium', {
-      body: d.body || '', icon: '/icon-192.png', badge: '/icon-192.png', vibrate: s.vibrate,
-      requireInteraction: s.requireInteraction, tag: s.tag, renotify: true, data: { url: d.url || '/' },
+      body: d.body || '', icon: '/icon-192.png', badge: '/icon-192.png', vibrate: waiting ? [400, 150, 400, 150, 400, 150, 400, 150, 400] : s.vibrate,
+      requireInteraction: waiting || s.requireInteraction, tag: waiting ? 'visitor-waiting' : s.tag, renotify: true, data: { url: d.url || '/' },
     });
+    if (waiting) {
+      await new Promise((r) => setTimeout(r, 60000));
+      (await self.registration.getNotifications({ tag: 'visitor-waiting' })).forEach((n) => n.close());
+    }
   })());
 });
 

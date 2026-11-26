@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
-import { playSound } from '../utils/sounds';
+import { playSound, startRing, stopRing } from '../utils/sounds';
 
 const SocketContext = createContext(null);
 
@@ -31,7 +31,8 @@ export function SocketProvider({ children }) {
     });
 
     // Visitor at the gate (resident) and the resident's decision (guards): doorbell
-    socket.on(`resident-${user.id}`, (d) => { if (d?.type === 'VISITOR_WAITING') playSound('VISITOR'); });
+    socket.on(`resident-${user.id}`, (d) => { if (d?.type === 'VISITOR_WAITING') startRing(d.visitor?.id); });
+    socket.on('visitor-decision', (d) => { if (user.role === 'RESIDENT' || d?.entryCode !== undefined) stopRing(d?.visitorId); });
     socket.on('visitor-decision', () => { if (['GUARD', 'SECURITY_ADMIN', 'ADMIN'].includes(user.role)) playSound('VISITOR'); });
     socket.on('new-message', (m) => { if (m?.senderId !== user.id) playSound('MESSAGE'); });
 

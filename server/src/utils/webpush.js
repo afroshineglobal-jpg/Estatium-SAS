@@ -24,7 +24,7 @@ async function send(sub, payload) {
   if (!init()) return { ok: false, gone: false };
   const urgent = payload.kind === 'EMERGENCY' || payload.kind === 'VISITOR';
   try {
-    await wp.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), { TTL: urgent ? 300 : 3600, urgency: urgent ? 'high' : 'normal', timeout: 10000 });
+    await wp.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), { TTL: payload.visitorId ? 60 : urgent ? 300 : 3600, urgency: urgent ? 'high' : 'normal', timeout: 10000 });
     return { ok: true, gone: false };
   } catch (e) {
     const gone = e.statusCode === 404 || e.statusCode === 410;

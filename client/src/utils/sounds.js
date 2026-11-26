@@ -44,6 +44,19 @@ export async function playSound(kind, { force = false } = {}) {
   } catch { /* audio unavailable */ }
 }
 
+// Visitor waiting at the gate: rings every 4 s until the resident decides or 60 s pass, whichever is first.
+const RING_MS = 60000; let ringTimer = null; let ringStop = null; let ringFor = null;
+export function startRing(visitorId) {
+  stopRing(); ringFor = visitorId || true;
+  playSound('VISITOR', { force: false }); ringTimer = setInterval(() => { lastPlayed.VISITOR = 0; playSound('VISITOR'); }, 4000);
+  ringStop = setTimeout(() => stopRing(), RING_MS);
+}
+export function stopRing(visitorId) {
+  if (visitorId && ringFor && ringFor !== true && ringFor !== visitorId) return;     // another visitor's decision: keep ringing
+  if (ringTimer) { clearInterval(ringTimer); ringTimer = null; } if (ringStop) { clearTimeout(ringStop); ringStop = null; } ringFor = null;
+  try { navigator.serviceWorker?.getRegistration().then((r) => r?.getNotifications({ tag: 'visitor-waiting' }).then((l) => l.forEach((n) => n.close()))); } catch { /* unsupported */ }
+}
+
 let alarmTimer = null; let alarmStop = null;
 export const alarmActive = () => !!alarmTimer;
 /** Siren that repeats until stopAlarm() (or 45 s). Always plays at full volume: an SOS must never be muted by a preference. */
