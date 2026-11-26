@@ -20,7 +20,7 @@ router.get('/dashboard', authenticate, authorize('ADMIN', 'FINANCE_ADMIN', 'SECU
     prisma.unit.count({ where: { isActive: true } }),
     prisma.visitor.count({ where: { createdAt: { gte: today } } }),
     prisma.visitor.count({ where: { status: 'INSIDE' } }),
-    prisma.maintenanceRequest.count({ where: { status: { in: ['OPEN', 'ASSIGNED'] } } }),
+    prisma.maintenanceRequest.count({ where: { status: { notIn: ['COMPLETED', 'CLOSED', 'REJECTED'] } } }),
     prisma.emergencyReport.count({ where: { status: 'ACTIVE' } }),
     prisma.bill.aggregate({ where: { currency: cur, status: { in: [...open, 'PAID'] } }, _sum: { amount: true, amountPaid: true } }),
     prisma.payment.aggregate({ where: { currency: cur, status: 'SUCCEEDED', paidAt: { gte: thisMonth } }, _sum: { amount: true } }),

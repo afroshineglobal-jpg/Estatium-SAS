@@ -4,16 +4,9 @@ import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import { fmt, symbol } from '../utils/money';
+import { downloadInvoice } from '../utils/invoice';
 
 const CAT = { MAINTENANCE: 'MAINTENANCE', AMENITY: 'AMENITY', UTILITY: 'OTHER', PENALTY: 'OTHER', ONE_TIME: 'OTHER' };
-
-async function downloadInvoice(b) {
-  try {
-    const blob = await api.get(`/billing/${b.id}/invoice.pdf`, { responseType: 'blob', timeout: 30000 });
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-    const a = document.createElement('a'); a.href = url; a.download = `${b.invoiceNo || 'invoice'}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
-  } catch { /* api shows the error */ }
-}
 
 const statusBadge = (s) => {
   const map = { PAID: 'badge-green', UNPAID: 'badge-yellow', OVERDUE: 'badge-red', WAIVED: 'badge-gray' };

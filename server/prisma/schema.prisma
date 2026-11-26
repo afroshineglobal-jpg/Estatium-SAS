@@ -161,10 +161,14 @@ enum BookingStatus {
 
 enum MaintenanceStatus {
   OPEN
+  ACCEPTED
   ASSIGNED
   IN_PROGRESS
+  AWAITING_PARTS
+  FIXED
   COMPLETED
   CLOSED
+  REJECTED
 }
 
 enum Priority {
@@ -940,6 +944,9 @@ model MaintenanceRequest {
   actualCost    Decimal?          @db.Decimal(14, 2)
   completedAt   DateTime?
   notes         String?
+  assigneeName  String?                       // person allocated (inspector / technician)
+  expectedDate  DateTime?                     // visit / completion date told to the resident
+  timeline      Json?                         // [{ at, status, note, by }] shown to the resident
   createdAt     DateTime          @default(now())
 
   @@index([tenantId, status])
